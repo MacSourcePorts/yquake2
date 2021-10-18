@@ -3,3 +3,9 @@
 *.mk
 *.user
 *.d
+.DS_Store
+/build-arm64/
+/build-x86_64/
+/release-arm64/
+/release-x86_64/
+build_macos_values.sh
