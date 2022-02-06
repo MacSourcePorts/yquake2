@@ -12,10 +12,10 @@ source ../MSPScripts/constants.sh
 
 rm -rf ${BUILT_PRODUCTS_DIR}
 
-ARM64_CFLAGS="-I/opt/homebrew/include -I/opt/homebrew/opt/openal-soft/include"
-ARM64_LDFLAGS="-L/opt/homebrew/lib -L/opt/homebrew/opt/openal-soft/lib"
-x86_64_CFLAGS=""
-x86_64_LDFLAGS=""
+ARM64_CFLAGS="-I/opt/homebrew/include -I/opt/homebrew/opt/openal-soft/include -mmacosx-version-min=10.9"
+ARM64_LDFLAGS="-L/opt/homebrew/lib -L/opt/homebrew/opt/openal-soft/lib -mmacosx-version-min=10.9"
+x86_64_CFLAGS="-mmacosx-version-min=10.9"
+x86_64_LDFLAGS="-mmacosx-version-min=10.9"
 
 (YQ2_ARCH=x86_64 make clean) || exit 1;
 (YQ2_ARCH=arm64 make clean) || exit 1;
