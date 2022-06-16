@@ -35,8 +35,11 @@
 #define DG_DYNARR_IMPLEMENTATION
 #include "header/DG_dynarr.h"
 
-
-#define REF_VERSION "Yamagi Quake II OpenGL3 Refresher"
+#ifdef YQ2_GL3_GLES3
+  #define REF_VERSION "Yamagi Quake II OpenGL ES3 Refresher"
+#else
+  #define REF_VERSION "Yamagi Quake II OpenGL3 Refresher"
+#endif
 
 refimport_t ri;
 
@@ -50,8 +53,6 @@ refdef_t gl3_newrefdef;
 
 viddef_t vid;
 gl3model_t *gl3_worldmodel;
-gl3model_t *currentmodel;
-entity_t *currententity;
 
 float gl3depthmin=0.0f, gl3depthmax=1.0f;
 
@@ -81,7 +82,8 @@ const hmm_mat4 gl3_identityMat4 = {{
 
 cvar_t *gl_msaa_samples;
 cvar_t *r_vsync;
-cvar_t *gl_retexturing;
+cvar_t *r_retexturing;
+cvar_t *r_scale8bittextures;
 cvar_t *vid_fullscreen;
 cvar_t *r_mode;
 cvar_t *r_customwidth;
@@ -94,6 +96,7 @@ cvar_t *r_clear;
 cvar_t *gl3_particle_size;
 cvar_t *gl3_particle_fade_factor;
 cvar_t *gl3_particle_square;
+cvar_t *gl3_colorlight;
 
 cvar_t *gl_lefthand;
 cvar_t *r_gunfov;
@@ -108,6 +111,9 @@ cvar_t *r_norefresh;
 cvar_t *r_drawentities;
 cvar_t *r_drawworld;
 cvar_t *gl_nolerp_list;
+cvar_t *r_lerp_list;
+cvar_t *r_2D_unfiltered;
+cvar_t *r_videos_unfiltered;
 cvar_t *gl_nobind;
 cvar_t *r_lockpvs;
 cvar_t *r_novis;
@@ -123,6 +129,7 @@ cvar_t *gl_shadows;
 cvar_t *gl3_debugcontext;
 cvar_t *gl3_usebigvbo;
 cvar_t *r_fixsurfsky;
+cvar_t *gl3_usefbo;
 
 // Yaw-Pitch-Roll
 // equivalent to R_z * R_y * R_x where R_x is the trans matrix for rotating around X axis for aroundXdeg
@@ -199,7 +206,8 @@ GL3_Register(void)
 	gl_drawbuffer = ri.Cvar_Get("gl_drawbuffer", "GL_BACK", 0);
 	r_vsync = ri.Cvar_Get("r_vsync", "1", CVAR_ARCHIVE);
 	gl_msaa_samples = ri.Cvar_Get ( "r_msaa_samples", "0", CVAR_ARCHIVE );
-	gl_retexturing = ri.Cvar_Get("r_retexturing", "1", CVAR_ARCHIVE);
+	r_retexturing = ri.Cvar_Get("r_retexturing", "1", CVAR_ARCHIVE);
+	r_scale8bittextures = ri.Cvar_Get("r_scale8bittextures", "0", CVAR_ARCHIVE);
 	gl3_debugcontext = ri.Cvar_Get("gl3_debugcontext", "0", 0);
 	r_mode = ri.Cvar_Get("r_mode", "4", CVAR_ARCHIVE);
 	r_customwidth = ri.Cvar_Get("r_customwidth", "1024", CVAR_ARCHIVE);
@@ -207,6 +215,8 @@ GL3_Register(void)
 	gl3_particle_size = ri.Cvar_Get("gl3_particle_size", "40", CVAR_ARCHIVE);
 	gl3_particle_fade_factor = ri.Cvar_Get("gl3_particle_fade_factor", "1.2", CVAR_ARCHIVE);
 	gl3_particle_square = ri.Cvar_Get("gl3_particle_square", "0", CVAR_ARCHIVE);
+	// if set to 0, lights (from lightmaps, dynamic lights and on models) are white instead of colored
+	gl3_colorlight = ri.Cvar_Get("gl3_colorlight", "1", CVAR_ARCHIVE);
 
 	//  0: use lots of calls to glBufferData()
 	//  1: reduce calls to glBufferData() with one big VBO (see GL3_BufferAndDraw3D())
@@ -220,7 +230,13 @@ GL3_Register(void)
 	r_fixsurfsky = ri.Cvar_Get("r_fixsurfsky", "0", CVAR_ARCHIVE);
 
 	/* don't bilerp characters and crosshairs */
-	gl_nolerp_list = ri.Cvar_Get("r_nolerp_list", "pics/conchars.pcx pics/ch1.pcx pics/ch2.pcx pics/ch3.pcx", 0);
+	gl_nolerp_list = ri.Cvar_Get("r_nolerp_list", "pics/conchars.pcx pics/ch1.pcx pics/ch2.pcx pics/ch3.pcx", CVAR_ARCHIVE);
+	/* textures that should always be filtered, even if r_2D_unfiltered or an unfiltered gl mode is used */
+	r_lerp_list = ri.Cvar_Get("r_lerp_list", "", CVAR_ARCHIVE);
+	/* don't bilerp any 2D elements */
+	r_2D_unfiltered = ri.Cvar_Get("r_2D_unfiltered", "0", CVAR_ARCHIVE);
+	/* don't bilerp videos */
+	r_videos_unfiltered = ri.Cvar_Get("r_videos_unfiltered", "0", CVAR_ARCHIVE);
 	gl_nobind = ri.Cvar_Get("gl_nobind", "0", 0);
 
 	gl_texturemode = ri.Cvar_Get("gl_texturemode", "GL_LINEAR_MIPMAP_NEAREST", CVAR_ARCHIVE);
@@ -234,7 +250,7 @@ GL3_Register(void)
 	r_lightlevel = ri.Cvar_Get("r_lightlevel", "0", 0);
 	gl3_overbrightbits = ri.Cvar_Get("gl3_overbrightbits", "1.3", CVAR_ARCHIVE);
 
-	gl_lightmap = ri.Cvar_Get("gl_lightmap", "0", 0);
+	gl_lightmap = ri.Cvar_Get("r_lightmap", "0", 0);
 	gl_shadows = ri.Cvar_Get("r_shadows", "0", CVAR_ARCHIVE);
 
 	r_modulate = ri.Cvar_Get("r_modulate", "1", CVAR_ARCHIVE);
@@ -245,6 +261,8 @@ GL3_Register(void)
 	r_novis = ri.Cvar_Get("r_novis", "0", 0);
 	r_speeds = ri.Cvar_Get("r_speeds", "0", 0);
 	gl_finish = ri.Cvar_Get("gl_finish", "0", CVAR_ARCHIVE);
+
+	gl3_usefbo = ri.Cvar_Get("gl3_usefbo", "1", CVAR_ARCHIVE); // use framebuffer object for postprocess effects (water)
 
 #if 0 // TODO!
 	//gl_lefthand = ri.Cvar_Get("hand", "0", CVAR_USERINFO | CVAR_ARCHIVE);
@@ -269,7 +287,7 @@ GL3_Register(void)
 
 	//gl_modulate = ri.Cvar_Get("gl_modulate", "1", CVAR_ARCHIVE);
 	//r_mode = ri.Cvar_Get("r_mode", "4", CVAR_ARCHIVE);
-	//gl_lightmap = ri.Cvar_Get("gl_lightmap", "0", 0);
+	//gl_lightmap = ri.Cvar_Get("r_lightmap", "0", 0);
 	//gl_shadows = ri.Cvar_Get("r_shadows", "0", CVAR_ARCHIVE);
 	//gl_nobind = ri.Cvar_Get("gl_nobind", "0", 0);
 	gl_showtris = ri.Cvar_Get("gl_showtris", "0", 0);
@@ -301,7 +319,7 @@ GL3_Register(void)
 	//r_customheight = ri.Cvar_Get("r_customheight", "768", CVAR_ARCHIVE);
 	//gl_msaa_samples = ri.Cvar_Get ( "r_msaa_samples", "0", CVAR_ARCHIVE );
 
-	//gl_retexturing = ri.Cvar_Get("r_retexturing", "1", CVAR_ARCHIVE);
+	//r_retexturing = ri.Cvar_Get("r_retexturing", "1", CVAR_ARCHIVE);
 
 
 	gl1_stereo = ri.Cvar_Get( "gl1_stereo", "0", CVAR_ARCHIVE );
@@ -589,6 +607,11 @@ GL3_Init(void)
 
 	GL3_SurfInit();
 
+	glGenFramebuffers(1, &gl3state.ppFBO);
+	// the rest for the FBO is done dynamically in GL3_RenderView() so it can
+	// take the viewsize into account (enforce that by setting invalid size)
+	gl3state.ppFBtexWidth = gl3state.ppFBtexHeight = -1;
+
 	R_Printf(PRINT_ALL, "\n");
 	return true;
 }
@@ -611,6 +634,17 @@ GL3_Shutdown(void)
 		GL3_SurfShutdown();
 		GL3_Draw_ShutdownLocal();
 		GL3_ShutdownShaders();
+
+		// free the postprocessing FBO and its renderbuffer and texture
+		if(gl3state.ppFBrbo != 0)
+			glDeleteRenderbuffers(1, &gl3state.ppFBrbo);
+		if(gl3state.ppFBtex != 0)
+			glDeleteTextures(1, &gl3state.ppFBtex);
+		if(gl3state.ppFBO != 0)
+			glDeleteFramebuffers(1, &gl3state.ppFBO);
+		gl3state.ppFBrbo = gl3state.ppFBtex = gl3state.ppFBO = 0;
+		gl3state.ppFBObound = false;
+		gl3state.ppFBtexWidth = gl3state.ppFBtexHeight = -1;
 	}
 
 	/* shutdown OS specific OpenGL stuff like contexts, etc.  */
@@ -773,7 +807,7 @@ GL3_DrawBeam(entity_t *e)
 }
 
 static void
-GL3_DrawSpriteModel(entity_t *e)
+GL3_DrawSpriteModel(entity_t *e, gl3model_t *currentmodel)
 {
 	float alpha = 1.0F;
 	gl3_3D_vtx_t verts[4];
@@ -852,7 +886,7 @@ GL3_DrawSpriteModel(entity_t *e)
 }
 
 static void
-GL3_DrawNullModel(void)
+GL3_DrawNullModel(entity_t *currententity)
 {
 	vec3_t shadelight;
 
@@ -862,7 +896,7 @@ GL3_DrawNullModel(void)
 	}
 	else
 	{
-		GL3_LightPoint(currententity->origin, shadelight);
+		GL3_LightPoint(currententity, currententity->origin, shadelight);
 	}
 
 	hmm_mat4 origModelMat = gl3state.uni3DData.transModelMat4;
@@ -922,7 +956,7 @@ GL3_DrawParticles(void)
 		} part_vtx;
 		assert(sizeof(part_vtx)==9*sizeof(float)); // remember to update GL3_SurfInit() if this changes!
 
-		part_vtx buf[numParticles];
+		YQ2_VLA(part_vtx, buf, numParticles);
 
 		// TODO: viewOrg could be in UBO
 		vec3_t viewOrg;
@@ -930,7 +964,16 @@ GL3_DrawParticles(void)
 
 		glDepthMask(GL_FALSE);
 		glEnable(GL_BLEND);
+
+#ifdef YQ2_GL3_GLES
+		// the RPi4 GLES3 implementation doesn't draw particles if culling is
+		// enabled (at least with GL_FRONT which seems to be default in q2?)
+		glDisable(GL_CULL_FACE);
+#else
+		// GLES doesn't have this, maybe it's always enabled? (https://gamedev.stackexchange.com/a/15528 says it works)
+		// luckily we don't use glPointSize() but set gl_PointSize in shader anyway
 		glEnable(GL_PROGRAM_POINT_SIZE);
+#endif
 
 		GL3_UseProgram(gl3state.siParticle.shaderProgram);
 
@@ -945,7 +988,7 @@ GL3_DrawParticles(void)
 			cur->size = pointSize;
 			cur->dist = VectorLength(offset);
 
-			for(int j=0; j<3; ++j)  cur->color[j] = color[j]/255.0f;
+			for(int j=0; j<3; ++j)  cur->color[j] = color[j]*(1.0f/255.0f);
 
 			cur->color[3] = p->alpha;
 		}
@@ -955,10 +998,16 @@ GL3_DrawParticles(void)
 		glBufferData(GL_ARRAY_BUFFER, sizeof(part_vtx)*numParticles, buf, GL_STREAM_DRAW);
 		glDrawArrays(GL_POINTS, 0, numParticles);
 
-
 		glDisable(GL_BLEND);
 		glDepthMask(GL_TRUE);
+#ifdef YQ2_GL3_GLES
+		if(gl_cull->value != 0.0f)
+			glEnable(GL_CULL_FACE);
+#else
 		glDisable(GL_PROGRAM_POINT_SIZE);
+#endif
+
+		YQ2_VLAFREE(buf);
 	}
 }
 
@@ -977,7 +1026,7 @@ GL3_DrawEntitiesOnList(void)
 	/* draw non-transparent first */
 	for (i = 0; i < gl3_newrefdef.num_entities; i++)
 	{
-		currententity = &gl3_newrefdef.entities[i];
+		entity_t *currententity = &gl3_newrefdef.entities[i];
 
 		if (currententity->flags & RF_TRANSLUCENT)
 		{
@@ -990,11 +1039,11 @@ GL3_DrawEntitiesOnList(void)
 		}
 		else
 		{
-			currentmodel = currententity->model;
+			gl3model_t *currentmodel = currententity->model;
 
 			if (!currentmodel)
 			{
-				GL3_DrawNullModel();
+				GL3_DrawNullModel(currententity);
 				continue;
 			}
 
@@ -1004,10 +1053,10 @@ GL3_DrawEntitiesOnList(void)
 					GL3_DrawAliasModel(currententity);
 					break;
 				case mod_brush:
-					GL3_DrawBrushModel(currententity);
+					GL3_DrawBrushModel(currententity, currentmodel);
 					break;
 				case mod_sprite:
-					GL3_DrawSpriteModel(currententity);
+					GL3_DrawSpriteModel(currententity, currentmodel);
 					break;
 				default:
 					ri.Sys_Error(ERR_DROP, "Bad modeltype");
@@ -1023,7 +1072,7 @@ GL3_DrawEntitiesOnList(void)
 
 	for (i = 0; i < gl3_newrefdef.num_entities; i++)
 	{
-		currententity = &gl3_newrefdef.entities[i];
+		entity_t *currententity = &gl3_newrefdef.entities[i];
 
 		if (!(currententity->flags & RF_TRANSLUCENT))
 		{
@@ -1036,11 +1085,11 @@ GL3_DrawEntitiesOnList(void)
 		}
 		else
 		{
-			currentmodel = currententity->model;
+			gl3model_t *currentmodel = currententity->model;
 
 			if (!currentmodel)
 			{
-				GL3_DrawNullModel();
+				GL3_DrawNullModel(currententity);
 				continue;
 			}
 
@@ -1050,10 +1099,10 @@ GL3_DrawEntitiesOnList(void)
 					GL3_DrawAliasModel(currententity);
 					break;
 				case mod_brush:
-					GL3_DrawBrushModel(currententity);
+					GL3_DrawBrushModel(currententity, currentmodel);
 					break;
 				case mod_sprite:
-					GL3_DrawSpriteModel(currententity);
+					GL3_DrawSpriteModel(currententity, currentmodel);
 					break;
 				default:
 					ri.Sys_Error(ERR_DROP, "Bad modeltype");
@@ -1273,6 +1322,7 @@ GL3_MYgluPerspective(GLdouble fovy, GLdouble aspect, GLdouble zNear, GLdouble zF
 
 	// the following emulates glFrustum(left, right, bottom, top, zNear, zFar)
 	// see https://www.khronos.org/registry/OpenGL-Refpages/gl2.1/xhtml/glFrustum.xml
+	//  or http://docs.gl/gl2/glFrustum#description (looks better in non-Firefox browsers)
 	A = (right+left)/(right-left);
 	B = (top+bottom)/(top-bottom);
 	C = -(zFar+zNear)/(zFar-zNear);
@@ -1287,6 +1337,8 @@ GL3_MYgluPerspective(GLdouble fovy, GLdouble aspect, GLdouble zNear, GLdouble zF
 
 	return ret;
 }
+
+static void GL3_Clear(void);
 
 static void
 SetupGL(void)
@@ -1318,13 +1370,73 @@ SetupGL(void)
 	}
 #endif // 0
 
-	glViewport(x, y2, w, h);
+	// set up the FBO accordingly, but only if actually rendering the world
+	// (=> don't use FBO when rendering the playermodel in the player menu)
+	// also, only do this when under water, because this has a noticeable overhead on some systems
+	if (gl3_usefbo->value && gl3state.ppFBO != 0
+		&& (gl3_newrefdef.rdflags & (RDF_NOWORLDMODEL|RDF_UNDERWATER)) == RDF_UNDERWATER)
+	{
+		glBindFramebuffer(GL_FRAMEBUFFER, gl3state.ppFBO);
+		gl3state.ppFBObound = true;
+		if(gl3state.ppFBtex == 0)
+		{
+			gl3state.ppFBtexWidth = -1; // make sure we generate the texture storage below
+			glGenTextures(1, &gl3state.ppFBtex);
+		}
+
+		if(gl3state.ppFBrbo == 0)
+		{
+			gl3state.ppFBtexWidth = -1; // make sure we generate the RBO storage below
+			glGenRenderbuffers(1, &gl3state.ppFBrbo);
+		}
+
+		// even if the FBO already has a texture and RBO, the viewport size
+		// might have changed so they need to be regenerated with the correct sizes
+		if(gl3state.ppFBtexWidth != w || gl3state.ppFBtexHeight != h)
+		{
+			gl3state.ppFBtexWidth = w;
+			gl3state.ppFBtexHeight = h;
+			GL3_Bind(gl3state.ppFBtex);
+			// create texture for FBO with size of the viewport
+			glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, w, h, 0, GL_RGB, GL_UNSIGNED_BYTE, NULL);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR );
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+			GL3_Bind(0);
+			// attach it to currently bound FBO
+			glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, gl3state.ppFBtex, 0);
+
+			// also create a renderbuffer object so the FBO has a stencil- and depth-buffer
+			glBindRenderbuffer(GL_RENDERBUFFER, gl3state.ppFBrbo);
+			glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH24_STENCIL8, w, h);
+			glBindRenderbuffer(GL_RENDERBUFFER, 0);
+			// attach it to the FBO
+			glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT,
+			                          GL_RENDERBUFFER, gl3state.ppFBrbo);
+
+			GLenum fbState = glCheckFramebufferStatus(GL_FRAMEBUFFER);
+			if(fbState != GL_FRAMEBUFFER_COMPLETE)
+			{
+				R_Printf(PRINT_ALL, "GL3 SetupGL(): WARNING: FBO is not complete, status = 0x%x\n", fbState);
+				gl3state.ppFBtexWidth = -1; // to try again next frame; TODO: maybe give up?
+				gl3state.ppFBObound = false;
+				glBindFramebuffer(GL_FRAMEBUFFER, 0);
+			}
+		}
+
+		GL3_Clear(); // clear the FBO that's bound now
+
+		glViewport(0, 0, w, h); // this will be moved to the center later, so no x/y offset
+	}
+	else // rendering directly (not to FBO for postprocessing)
+	{
+		glViewport(x, y2, w, h);
+	}
 
 	/* set up projection matrix (eye coordinates -> clip coordinates) */
 	{
 		float screenaspect = (float)gl3_newrefdef.width / gl3_newrefdef.height;
 		float dist = (r_farsee->value == 0) ? 4096.0f : 8192.0f;
-		gl3state.uni3DData.transProjMat4 = GL3_MYgluPerspective(gl3_newrefdef.fov_y, screenaspect, 4, dist);
+		gl3state.projMat3D = GL3_MYgluPerspective(gl3_newrefdef.fov_y, screenaspect, 4, dist);
 	}
 
 	glCullFace(GL_FRONT);
@@ -1333,7 +1445,7 @@ SetupGL(void)
 	{
 		// first put Z axis going up
 		hmm_mat4 viewMat = {{
-			{  0, 0, -1, 0 }, // first *column* (the matrix is colum-major)
+			{  0, 0, -1, 0 }, // first *column* (the matrix is column-major)
 			{ -1, 0,  0, 0 },
 			{  0, 1,  0, 0 },
 			{  0, 0,  0, 1 }
@@ -1348,8 +1460,12 @@ SetupGL(void)
 		hmm_vec3 trans = HMM_Vec3(-gl3_newrefdef.vieworg[0], -gl3_newrefdef.vieworg[1], -gl3_newrefdef.vieworg[2]);
 		viewMat = HMM_MultiplyMat4( viewMat, HMM_Translate(trans) );
 
-		gl3state.uni3DData.transViewMat4 = viewMat;
+		gl3state.viewMat3D = viewMat;
 	}
+
+	// just use one projection-view-matrix (premultiplied here)
+	// so we have one less mat4 multiplication in the 3D shaders
+	gl3state.uni3DData.transProjViewMat4 = HMM_MultiplyMat4(gl3state.projMat3D, gl3state.viewMat3D);
 
 	gl3state.uni3DData.transModelMat4 = gl3_identityMat4;
 
@@ -1580,7 +1696,7 @@ GL3_GetSpecialBufferModeForStereoMode(enum stereo_modes stereo_mode) {
 #endif // 0
 
 static void
-GL3_SetLightLevel(void)
+GL3_SetLightLevel(entity_t *currententity)
 {
 	vec3_t shadelight = {0};
 
@@ -1590,7 +1706,7 @@ GL3_SetLightLevel(void)
 	}
 
 	/* save off light value for server to look at */
-	GL3_LightPoint(gl3_newrefdef.vieworg, shadelight);
+	GL3_LightPoint(currententity, gl3_newrefdef.vieworg, shadelight);
 
 	/* pick the greatest component, which should be the
 	 * same as the mono value returned by software */
@@ -1622,14 +1738,24 @@ static void
 GL3_RenderFrame(refdef_t *fd)
 {
 	GL3_RenderView(fd);
-	GL3_SetLightLevel();
+	GL3_SetLightLevel(NULL);
+	qboolean usedFBO = gl3state.ppFBObound; // if it was/is used this frame
+	if(usedFBO)
+	{
+		glBindFramebuffer(GL_FRAMEBUFFER, 0); // now render to default framebuffer
+		gl3state.ppFBObound = false;
+	}
 	GL3_SetGL2D();
 
-	if(v_blend[3] != 0.0f)
+	int x = (vid.width - gl3_newrefdef.width)/2;
+	int y = (vid.height - gl3_newrefdef.height)/2;
+	if (usedFBO)
 	{
-		int x = (vid.width - gl3_newrefdef.width)/2;
-		int y = (vid.height - gl3_newrefdef.height)/2;
-
+		// if we're actually drawing the world and using an FBO, render the FBO's texture
+		GL3_DrawFrameBufferObject(x, y, gl3_newrefdef.width, gl3_newrefdef.height, gl3state.ppFBtex, v_blend);
+	}
+	else if(v_blend[3] != 0.0f)
+	{
 		GL3_Draw_Flash(v_blend, x, y, gl3_newrefdef.width, gl3_newrefdef.height);
 	}
 }
@@ -1735,9 +1861,10 @@ GL3_BeginFrame(float camera_separation)
 		GL3_UpdateUBO3D();
 	}
 
-	if(gl3_particle_square->modified)
+	if(gl3_particle_square->modified || gl3_colorlight->modified)
 	{
 		gl3_particle_square->modified = false;
+		gl3_colorlight->modified = false;
 		GL3_RecreateShaders();
 	}
 
@@ -1751,26 +1878,37 @@ GL3_BeginFrame(float camera_separation)
 	{
 		gl_drawbuffer->modified = false;
 
+
+#ifdef YQ2_GL3_GLES
+		// OpenGL ES3 only supports GL_NONE, GL_BACK and GL_COLOR_ATTACHMENT*
+		// so this doesn't make sense here, see https://docs.gl/es3/glDrawBuffers
+		R_Printf(PRINT_ALL, "NOTE: gl_drawbuffer not supported by OpenGL ES!\n");
+#else // Desktop GL
 		// TODO: stereo stuff
 		//if ((gl3state.camera_separation == 0) || gl3state.stereo_mode != STEREO_MODE_OPENGL)
 		{
+			GLenum drawBuffer = GL_BACK;
 			if (Q_stricmp(gl_drawbuffer->string, "GL_FRONT") == 0)
 			{
-				glDrawBuffer(GL_FRONT);
+				drawBuffer = GL_FRONT;
 			}
-			else
-			{
-				glDrawBuffer(GL_BACK);
-			}
+			glDrawBuffer(drawBuffer);
 		}
+#endif
 	}
 
 	/* texturemode stuff */
-	if (gl_texturemode->modified || (gl3config.anisotropic && gl_anisotropic->modified))
+	if (gl_texturemode->modified || (gl3config.anisotropic && gl_anisotropic->modified)
+	    || gl_nolerp_list->modified || r_lerp_list->modified
+		|| r_2D_unfiltered->modified || r_videos_unfiltered->modified)
 	{
 		GL3_TextureMode(gl_texturemode->string);
 		gl_texturemode->modified = false;
 		gl_anisotropic->modified = false;
+		gl_nolerp_list->modified = false;
+		r_lerp_list->modified = false;
+		r_2D_unfiltered->modified = false;
+		r_videos_unfiltered->modified = false;
 	}
 
 	if (r_vsync->modified)

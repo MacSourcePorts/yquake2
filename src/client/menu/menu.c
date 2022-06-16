@@ -34,10 +34,9 @@
 #include "../sound/header/local.h"
 #include "header/qmenu.h"
 
-static int m_main_cursor;
-
 /* Number of the frames of the spinning quake logo */
 #define NUM_CURSOR_FRAMES 15
+static int m_cursor_width = 0;
 
 /* Signals the file system to start the demo loop. */
 qboolean menu_startdemoloop;
@@ -55,6 +54,7 @@ static void M_Menu_DownloadOptions_f(void);
 static void M_Menu_Credits_f(void);
 static void M_Menu_Mods_f(void);
 static void M_Menu_Multiplayer_f(void);
+static void M_Menu_Multiplayer_Keys_f(void);
 static void M_Menu_JoinServer_f(void);
 static void M_Menu_AddressBook_f(void);
 static void M_Menu_StartServer_f(void);
@@ -63,6 +63,8 @@ static void M_Menu_Video_f(void);
 static void M_Menu_Options_f(void);
 static void M_Menu_Keys_f(void);
 static void M_Menu_Joy_f(void);
+static void M_Menu_ControllerButtons_f(void);
+static void M_Menu_ControllerAltButtons_f(void);
 static void M_Menu_Quit_f(void);
 
 void M_Menu_Credits(void);
@@ -228,25 +230,25 @@ Key_GetMenuKey(int key)
 	{
 		case K_KP_UPARROW:
 		case K_UPARROW:
-		case K_HAT_UP:
+		case K_DPAD_UP:
 			return K_UPARROW;
 
 		case K_TAB:
 		case K_KP_DOWNARROW:
 		case K_DOWNARROW:
-		case K_HAT_DOWN:
+		case K_DPAD_DOWN:
 			return K_DOWNARROW;
 
 		case K_KP_LEFTARROW:
 		case K_LEFTARROW:
-		case K_HAT_LEFT:
-		case K_TRIG_LEFT:
+		case K_DPAD_LEFT:
+		case K_SHOULDER_LEFT:
 			return K_LEFTARROW;
 
 		case K_KP_RIGHTARROW:
 		case K_RIGHTARROW:
-		case K_HAT_RIGHT:
-		case K_TRIG_RIGHT:
+		case K_DPAD_RIGHT:
+		case K_SHOULDER_RIGHT:
 			return K_RIGHTARROW;
 
 		case K_MOUSE1:
@@ -255,45 +257,21 @@ Key_GetMenuKey(int key)
 		case K_MOUSE4:
 		case K_MOUSE5:
 
-		case K_JOY1:
-		case K_JOY2:
-		case K_JOY3:
-		case K_JOY4:
-		case K_JOY5:
-		case K_JOY6:
-		case K_JOY7:
-		case K_JOY8:
-		case K_JOY9:
-		case K_JOY10:
-		case K_JOY11:
-		case K_JOY12:
-		case K_JOY13:
-		case K_JOY14:
-		case K_JOY15:
-		case K_JOY16:
-		case K_JOY17:
-		case K_JOY18:
-		case K_JOY19:
-		case K_JOY20:
-		case K_JOY21:
-		case K_JOY22:
-		case K_JOY23:
-		case K_JOY24:
-		case K_JOY25:
-		case K_JOY26:
-		case K_JOY27:
-		case K_JOY28:
-		case K_JOY29:
-		case K_JOY30:
-		case K_JOY31:
-
 		case K_KP_ENTER:
 		case K_ENTER:
+		case K_BTN_A:
 			return K_ENTER;
 
 		case K_ESCAPE:
 		case K_JOY_BACK:
+		case K_BTN_B:
 			return K_ESCAPE;
+
+		case K_BACKSPACE:
+		case K_DEL:
+		case K_KP_DEL:
+		case K_BTN_Y:
+			return K_BACKSPACE;
 	}
 
 	return key;
@@ -564,21 +542,57 @@ M_Popup(void)
  * MAIN MENU
  */
 
-#define MAIN_ITEMS 5
+static menuframework_s s_main;
+static menubitmap_s s_plaque;
+static menubitmap_s s_logo;
+static menubitmap_s s_game;
+static menubitmap_s s_multiplayer;
+static menubitmap_s s_options;
+static menubitmap_s s_video;
+static menubitmap_s s_quit;
 
 static void
-M_Main_Draw(void)
+GameFunc(void *unused)
 {
-    int i;
-    int w, h;
-    int ystart;
-    int xoffset;
+    M_Menu_Game_f();
+}
+
+static void
+MultiplayerFunc(void *unused)
+{
+    M_Menu_Multiplayer_f();
+}
+
+static void
+OptionsFunc(void *unused)
+{
+    M_Menu_Options_f();
+}
+
+static void
+VideoFunc(void *unused)
+{
+    M_Menu_Video_f();
+}
+
+static void
+QuitFunc(void *unused)
+{
+    M_Menu_Quit_f();
+}
+
+static void
+InitMainMenu(void)
+{
+    float scale = SCR_GetMenuScale();
+    int i = 0;
+    int x = 0;
+    int y = 0;
+    int w = 0;
+    int h = 0;
     int widest = -1;
-    int totalheight = 0;
-    char litname[80];
-	float scale = SCR_GetMenuScale();
-    char *names[] =
-    {
+
+    char * names[] = {
         "m_main_game",
         "m_main_multiplayer",
         "m_main_options",
@@ -595,93 +609,145 @@ M_Main_Draw(void)
         {
             widest = w;
         }
-
-        totalheight += (h + 12);
     }
 
-    ystart = (viddef.height / (2 * scale) - 110);
-    xoffset = (viddef.width / scale - widest + 70) / 2;
+    x = (viddef.width / scale - widest + 70) / 2;
+    y = (viddef.height / (2 * scale) - 110);
 
-    for (i = 0; names[i] != 0; i++)
-    {
-        if (i != m_main_cursor)
-        {
-            Draw_PicScaled(xoffset * scale, (ystart + i * 40 + 13) * scale, names[i], scale);
-        }
-    }
-
-    strcpy(litname, names[m_main_cursor]);
-    strcat(litname, "_sel");
-    Draw_PicScaled(xoffset * scale, (ystart + m_main_cursor * 40 + 13) * scale, litname, scale);
-
-    M_DrawCursor(xoffset - 25, ystart + m_main_cursor * 40 + 11,
-                 (int)(cls.realtime / 100) % NUM_CURSOR_FRAMES);
+    memset(&s_main, 0, sizeof( menuframework_s ));
 
     Draw_GetPicSize(&w, &h, "m_main_plaque");
-    Draw_PicScaled((xoffset - 30 - w) * scale, ystart * scale, "m_main_plaque", scale);
 
-    Draw_PicScaled((xoffset - 30 - w) * scale, (ystart + h + 5) * scale, "m_main_logo", scale);
+    s_plaque.generic.type = MTYPE_BITMAP;
+    s_plaque.generic.flags = QMF_LEFT_JUSTIFY | QMF_INACTIVE;
+    s_plaque.generic.x = (x - (m_cursor_width + 5) - w);
+    s_plaque.generic.y = y;
+    s_plaque.generic.name = "m_main_plaque";
+    s_plaque.generic.callback = 0;
+    s_plaque.focuspic = 0;
+
+    s_logo.generic.type = MTYPE_BITMAP;
+    s_logo.generic.flags = QMF_LEFT_JUSTIFY | QMF_INACTIVE;
+    s_logo.generic.x = (x - (m_cursor_width + 5) - w);
+    s_logo.generic.y = y + h + 5;
+    s_logo.generic.name = "m_main_logo";
+    s_logo.generic.callback = 0;
+    s_logo.focuspic = 0;
+
+    y += 10;
+
+    s_game.generic.type = MTYPE_BITMAP;
+    s_game.generic.flags = QMF_LEFT_JUSTIFY | QMF_HIGHLIGHT_IF_FOCUS;
+    s_game.generic.x = x;
+    s_game.generic.y = y;
+    s_game.generic.name = "m_main_game";
+    s_game.generic.callback = GameFunc;
+    s_game.focuspic = "m_main_game_sel";
+
+    Draw_GetPicSize(&w, &h, ( char * )s_game.generic.name);
+    y += h + 8;
+
+    s_multiplayer.generic.type = MTYPE_BITMAP;
+    s_multiplayer.generic.flags = QMF_LEFT_JUSTIFY | QMF_HIGHLIGHT_IF_FOCUS;
+    s_multiplayer.generic.x = x;
+    s_multiplayer.generic.y = y;
+    s_multiplayer.generic.name = "m_main_multiplayer";
+    s_multiplayer.generic.callback = MultiplayerFunc;
+    s_multiplayer.focuspic = "m_main_multiplayer_sel";
+
+    Draw_GetPicSize(&w, &h, ( char * )s_multiplayer.generic.name);
+    y += h + 8;
+
+    s_options.generic.type = MTYPE_BITMAP;
+    s_options.generic.flags = QMF_LEFT_JUSTIFY | QMF_HIGHLIGHT_IF_FOCUS;
+    s_options.generic.x = x;
+    s_options.generic.y = y;
+    s_options.generic.name = "m_main_options";
+    s_options.generic.callback = OptionsFunc;
+    s_options.focuspic = "m_main_options_sel";
+
+    Draw_GetPicSize(&w, &h, ( char * )s_options.generic.name);
+    y += h + 8;
+
+    s_video.generic.type = MTYPE_BITMAP;
+    s_video.generic.flags = QMF_LEFT_JUSTIFY | QMF_HIGHLIGHT_IF_FOCUS;
+    s_video.generic.x = x;
+    s_video.generic.y = y;
+    s_video.generic.name = "m_main_video";
+    s_video.generic.callback = VideoFunc;
+    s_video.focuspic = "m_main_video_sel";
+
+    Draw_GetPicSize(&w, &h, ( char * )s_video.generic.name);
+    y += h + 8;
+
+    s_quit.generic.type = MTYPE_BITMAP;
+    s_quit.generic.flags = QMF_LEFT_JUSTIFY | QMF_HIGHLIGHT_IF_FOCUS;
+    s_quit.generic.x = x;
+    s_quit.generic.y = y;
+    s_quit.generic.name = "m_main_quit";
+    s_quit.generic.callback = QuitFunc;
+    s_quit.focuspic = "m_main_quit_sel";
+
+    Menu_AddItem(&s_main, (void *)&s_plaque);
+    Menu_AddItem(&s_main, (void *)&s_logo);
+    Menu_AddItem(&s_main, (void *)&s_game);
+    Menu_AddItem(&s_main, (void *)&s_multiplayer);
+    Menu_AddItem(&s_main, (void *)&s_options);
+    Menu_AddItem(&s_main, (void *)&s_video);
+    Menu_AddItem(&s_main, (void *)&s_quit);
+
+    Menu_Center(&s_main);
+}
+
+
+static void
+M_Main_Draw(void)
+{
+    menucommon_s * item = 0;
+    int x = 0;
+    int y = 0;
+
+    item = ( menucommon_s * )s_main.items[s_main.cursor];
+
+    if (item)
+    {
+        x = item->x;
+        y = item->y;
+    }
+
+    Menu_Draw(&s_main);
+    M_DrawCursor(x - m_cursor_width, y,
+        ( int )(cls.realtime / 100) % NUM_CURSOR_FRAMES);
 }
 
 const char *
 M_Main_Key(int key)
 {
-	const char *sound = menu_move_sound;
-	int menu_key = Key_GetMenuKey(key);
-
-    switch (menu_key)
-    {
-    case K_ESCAPE:
-        M_PopMenu();
-        break;
-
-    case K_DOWNARROW:
-        if (++m_main_cursor >= MAIN_ITEMS)
-        {
-            m_main_cursor = 0;
-        }
-        return sound;
-
-    case K_UPARROW:
-        if (--m_main_cursor < 0)
-        {
-            m_main_cursor = MAIN_ITEMS - 1;
-        }
-        return sound;
-
-    case K_ENTER:
-        m_entersound = true;
-
-        switch (m_main_cursor)
-        {
-        case 0:
-            M_Menu_Game_f();
-            break;
-
-        case 1:
-            M_Menu_Multiplayer_f();
-            break;
-
-        case 2:
-            M_Menu_Options_f();
-            break;
-
-        case 3:
-            M_Menu_Video_f();
-            break;
-
-        case 4:
-            M_Menu_Quit_f();
-            break;
-        }
-    }
-
-    return NULL;
+    return Default_MenuKey(&s_main, key);
 }
 
 void
 M_Menu_Main_f(void)
 {
+    menucommon_s * item = 0;
+
+    InitMainMenu();
+
+    // force first available item to have focus 
+    while (s_main.cursor >= 0 && s_main.cursor < s_main.nitems)
+    {
+        item = ( menucommon_s * )s_main.items[s_main.cursor];
+        
+        if ((item->flags & (QMF_INACTIVE)))
+        {
+            s_main.cursor++;
+        }
+        else
+        {
+            break;
+        }
+    }
+
     M_PushMenu(M_Main_Draw, M_Main_Key);
 }
 
@@ -693,6 +759,7 @@ static menuframework_s s_multiplayer_menu;
 static menuaction_s s_join_network_server_action;
 static menuaction_s s_start_network_server_action;
 static menuaction_s s_player_setup_action;
+static menuaction_s s_customize_options_action;
 
 static void
 Multiplayer_MenuDraw(void)
@@ -710,6 +777,12 @@ PlayerSetupFunc(void *unused)
 }
 
 static void
+MultplayerCustomizeControlsFunc(void *unused)
+{
+    M_Menu_Multiplayer_Keys_f();
+}
+
+static void
 JoinNetworkServerFunc(void *unused)
 {
     M_Menu_JoinServer_f();
@@ -724,7 +797,7 @@ StartNetworkServerFunc(void *unused)
 static void
 Multiplayer_MenuInit(void)
 {
-	float scale = SCR_GetMenuScale();
+    float scale = SCR_GetMenuScale();
 
     s_multiplayer_menu.x = (int)(viddef.width * 0.50f) - 64 * scale;
     s_multiplayer_menu.nitems = 0;
@@ -750,9 +823,17 @@ Multiplayer_MenuInit(void)
     s_player_setup_action.generic.name = " player setup";
     s_player_setup_action.generic.callback = PlayerSetupFunc;
 
+    s_customize_options_action.generic.type = MTYPE_ACTION;
+    s_customize_options_action.generic.flags = QMF_LEFT_JUSTIFY;
+    s_customize_options_action.generic.x = 0;
+    s_customize_options_action.generic.y = 30;
+    s_customize_options_action.generic.name = " customize controls";
+    s_customize_options_action.generic.callback = MultplayerCustomizeControlsFunc;
+
     Menu_AddItem(&s_multiplayer_menu, (void *)&s_join_network_server_action);
     Menu_AddItem(&s_multiplayer_menu, (void *)&s_start_network_server_action);
     Menu_AddItem(&s_multiplayer_menu, (void *)&s_player_setup_action);
+    Menu_AddItem(&s_multiplayer_menu, (void *)&s_customize_options_action);
 
     Menu_SetStatusBar(&s_multiplayer_menu, NULL);
 
@@ -801,27 +882,36 @@ char *bindnames[][2] =
     {"invdrop", "drop item"},
     {"invprev", "prev item"},
     {"invnext", "next item"},
-    {"cmd help", "help computer"},
-    {"+joyaltselector", "enable alt joy keys"}
+    {"cmd help", "help computer"}
 };
 #define NUM_BINDNAMES (sizeof bindnames / sizeof bindnames[0])
 
 int keys_cursor;
-static int bind_grab;
+static int menukeyitem_bind;
 
 static menuframework_s s_keys_menu;
 static menuframework_s s_joy_menu;
 static menuaction_s s_keys_actions[NUM_BINDNAMES];
 
 static void
-M_UnbindCommand(char *command)
+M_UnbindCommand(char *command, int scope)
 {
     int j;
-    int l;
+    int begin = 0, end = K_LAST;
+    switch (scope)
+    {
+        case KEYS_KEYBOARD_MOUSE:
+             end = K_JOY_FIRST_REGULAR;
+             break;
+        case KEYS_CONTROLLER:
+             begin = K_JOY_FIRST_REGULAR;
+             end = K_JOY_LAST_REGULAR + 1;
+             break;
+        case KEYS_CONTROLLER_ALT:
+             begin = K_JOY_FIRST_REGULAR_ALT;
+    }
 
-    l = strlen(command);
-
-    for (j = 0; j < K_LAST; j++)
+    for (j = begin; j < end; j++)
     {
         char *b;
         b = keybindings[j];
@@ -831,7 +921,7 @@ M_UnbindCommand(char *command)
             continue;
         }
 
-        if (!strncmp(b, command, l))
+        if (!strcmp(b, command))
         {
             Key_SetBinding(j, "");
         }
@@ -839,17 +929,28 @@ M_UnbindCommand(char *command)
 }
 
 static void
-M_FindKeysForCommand(char *command, int *twokeys)
+M_FindKeysForCommand(char *command, int *twokeys, int scope)
 {
     int count;
     int j;
-    int l;
+    int begin = 0, end = K_LAST;
+    switch (scope)
+    {
+        case KEYS_KEYBOARD_MOUSE:
+             end = K_JOY_FIRST_REGULAR;
+             break;
+        case KEYS_CONTROLLER:
+             begin = K_JOY_FIRST_REGULAR;
+             end = K_JOY_LAST_REGULAR + 1;
+             break;
+        case KEYS_CONTROLLER_ALT:
+             begin = K_JOY_FIRST_REGULAR_ALT;
+    }
 
     twokeys[0] = twokeys[1] = -1;
-    l = strlen(command);
     count = 0;
 
-    for (j = 0; j < K_LAST; j++)
+    for (j = begin; j < end; j++)
     {
         char *b;
         b = keybindings[j];
@@ -859,7 +960,7 @@ M_FindKeysForCommand(char *command, int *twokeys)
             continue;
         }
 
-        if (!strncmp(b, command, l))
+        if (!strcmp(b, command))
         {
             twokeys[count] = j;
             count++;
@@ -877,11 +978,10 @@ KeyCursorDrawFunc(menuframework_s *menu)
 {
 	float scale = SCR_GetMenuScale();
 
-    if (bind_grab)
+    if (menukeyitem_bind)
     {
         Draw_CharScaled(menu->x, (menu->y + menu->cursor * 9) * scale, '=', scale);
     }
-
     else
     {
         Draw_CharScaled(menu->x, (menu->y + menu->cursor * 9) * scale, 12 +
@@ -896,11 +996,11 @@ DrawKeyBindingFunc(void *self)
     menuaction_s *a = (menuaction_s *)self;
     float scale = SCR_GetMenuScale();
 
-    M_FindKeysForCommand(bindnames[a->generic.localdata[0]][0], keys);
+    M_FindKeysForCommand(bindnames[a->generic.localdata[0]][0], keys, KEYS_KEYBOARD_MOUSE);
 
     if (keys[0] == -1)
     {
-        Menu_DrawString(a->generic.x + a->generic.parent->x + 16 * scale,
+        Menu_DrawString(a->generic.x + a->generic.parent->x + RCOLUMN_OFFSET * scale,
                         a->generic.y + a->generic.parent->y, "???");
     }
     else
@@ -910,7 +1010,7 @@ DrawKeyBindingFunc(void *self)
 
         name = Key_KeynumToString(keys[0]);
 
-        Menu_DrawString(a->generic.x + a->generic.parent->x + 16 * scale,
+        Menu_DrawString(a->generic.x + a->generic.parent->x + RCOLUMN_OFFSET * scale,
                         a->generic.y + a->generic.parent->y, name);
 
         x = strlen(name) * 8;
@@ -932,14 +1032,14 @@ KeyBindingFunc(void *self)
     menuaction_s *a = (menuaction_s *)self;
     int keys[2];
 
-    M_FindKeysForCommand(bindnames[a->generic.localdata[0]][0], keys);
+    M_FindKeysForCommand(bindnames[a->generic.localdata[0]][0], keys, KEYS_KEYBOARD_MOUSE);
 
     if (keys[1] != -1)
     {
-        M_UnbindCommand(bindnames[a->generic.localdata[0]][0]);
+        M_UnbindCommand(bindnames[a->generic.localdata[0]][0], KEYS_KEYBOARD_MOUSE);
     }
 
-    bind_grab = true;
+    menukeyitem_bind = true;
 
     Menu_SetStatusBar(&s_keys_menu, "press a key or button for this action");
 }
@@ -982,9 +1082,10 @@ Keys_MenuKey(int key)
 {
     menuaction_s *item = (menuaction_s *)Menu_ItemAtCursor(&s_keys_menu);
 
-    if (bind_grab)
+    if (menukeyitem_bind)
     {
-        if ((key != K_ESCAPE) && (key != '`'))
+        // Any key/button except from the game controller and escape keys
+        if ((key != K_ESCAPE) && (key != '`') && (key < K_JOY_FIRST_REGULAR))
         {
             char cmd[1024];
 
@@ -994,20 +1095,18 @@ Keys_MenuKey(int key)
         }
 
         Menu_SetStatusBar(&s_keys_menu, "ENTER to change, BACKSPACE to clear");
-        bind_grab = false;
+        menukeyitem_bind = false;
         return menu_out_sound;
     }
 
+    key = Key_GetMenuKey(key);
     switch (key)
     {
-    case K_KP_ENTER:
     case K_ENTER:
         KeyBindingFunc(item);
         return menu_in_sound;
     case K_BACKSPACE: /* delete bindings */
-    case K_DEL: /* delete bindings */
-    case K_KP_DEL:
-        M_UnbindCommand(bindnames[item->generic.localdata[0]][0]);
+        M_UnbindCommand(bindnames[item->generic.localdata[0]][0], KEYS_KEYBOARD_MOUSE);
         return menu_out_sound;
     default:
         return Default_MenuKey(&s_keys_menu, key);
@@ -1022,6 +1121,482 @@ M_Menu_Keys_f(void)
 }
 
 /*
+ * MULTIPLAYER KEYS MENU
+ */
+
+char *multiplayer_key_bindnames[][2] =
+{
+    {"score", "score"},
+    {"messagemode", "chat"},
+    {"messagemode2", "team chat"},
+    {"wave 1", "wave 1"},
+    {"wave 2", "wave 2"},
+    {"wave 3", "wave 3"},
+    {"wave 4", "wave 4"},
+};
+#define NUM_MULTIPLAYER_KEY_BINDNAMES (sizeof multiplayer_key_bindnames / sizeof multiplayer_key_bindnames[0])
+
+static menuframework_s s_multiplayer_keys_menu;
+static menuaction_s s_multiplayer_keys_actions[NUM_MULTIPLAYER_KEY_BINDNAMES];
+
+static void
+MultiplayerDrawKeyBindingFunc(void *self)
+{
+    int keys[2];
+    menuaction_s *a = (menuaction_s *)self;
+    float scale = SCR_GetMenuScale();
+
+    M_FindKeysForCommand(multiplayer_key_bindnames[a->generic.localdata[0]][0], keys, KEYS_ALL);
+
+    if (keys[0] == -1)
+    {
+        Menu_DrawString(a->generic.x + a->generic.parent->x + RCOLUMN_OFFSET * scale,
+                        a->generic.y + a->generic.parent->y, "???");
+    }
+    else
+    {
+        int x;
+        const char *name;
+
+        name = Key_KeynumToString(keys[0]);
+
+        Menu_DrawString(a->generic.x + a->generic.parent->x + RCOLUMN_OFFSET * scale,
+                        a->generic.y + a->generic.parent->y, name);
+
+        x = strlen(name) * 8;
+
+        if (keys[1] != -1)
+        {
+            Menu_DrawString(a->generic.x + a->generic.parent->x + 24 * scale + (x * scale),
+                            a->generic.y + a->generic.parent->y, "or");
+            Menu_DrawString(a->generic.x + a->generic.parent->x + 48 * scale + (x * scale),
+                            a->generic.y + a->generic.parent->y,
+                            Key_KeynumToString(keys[1]));
+        }
+    }
+}
+
+static void
+MultiplayerKeyBindingFunc(void *self)
+{
+    menuaction_s *a = (menuaction_s *)self;
+    int keys[2];
+
+    M_FindKeysForCommand(multiplayer_key_bindnames[a->generic.localdata[0]][0], keys, KEYS_ALL);
+
+    if (keys[1] != -1)
+    {
+        M_UnbindCommand(multiplayer_key_bindnames[a->generic.localdata[0]][0], KEYS_ALL);
+    }
+
+    menukeyitem_bind = true;
+
+    Menu_SetStatusBar(&s_multiplayer_keys_menu, "press a key or button for this action");
+}
+
+static void
+MultiplayerKeys_MenuInit(void)
+{
+    int i;
+
+    s_multiplayer_keys_menu.x = (int)(viddef.width * 0.50f);
+    s_multiplayer_keys_menu.nitems = 0;
+    s_multiplayer_keys_menu.cursordraw = KeyCursorDrawFunc;
+
+    for (i = 0; i < NUM_MULTIPLAYER_KEY_BINDNAMES; i++)
+    {
+        s_multiplayer_keys_actions[i].generic.type = MTYPE_ACTION;
+        s_multiplayer_keys_actions[i].generic.flags = QMF_GRAYED;
+        s_multiplayer_keys_actions[i].generic.x = 0;
+        s_multiplayer_keys_actions[i].generic.y = (i * 9);
+        s_multiplayer_keys_actions[i].generic.ownerdraw = MultiplayerDrawKeyBindingFunc;
+        s_multiplayer_keys_actions[i].generic.localdata[0] = i;
+        s_multiplayer_keys_actions[i].generic.name = multiplayer_key_bindnames[s_multiplayer_keys_actions[i].generic.localdata[0]][1];
+
+        Menu_AddItem(&s_multiplayer_keys_menu, (void *)&s_multiplayer_keys_actions[i]);
+    }
+
+    Menu_SetStatusBar(&s_multiplayer_keys_menu, "ENTER to change, BACKSPACE to clear");
+    Menu_Center(&s_multiplayer_keys_menu);
+}
+
+static void
+MultiplayerKeys_MenuDraw(void)
+{
+    Menu_AdjustCursor(&s_multiplayer_keys_menu, 1);
+    Menu_Draw(&s_multiplayer_keys_menu);
+}
+
+static const char *
+MultiplayerKeys_MenuKey(int key)
+{
+    menuaction_s *item = (menuaction_s *)Menu_ItemAtCursor(&s_multiplayer_keys_menu);
+
+    if (menukeyitem_bind)
+    {
+        // Any key/button but the escape ones
+        if ((key != K_ESCAPE) && (key != '`') && (key != K_JOY_BACK))
+        {
+            char cmd[1024];
+
+            Com_sprintf(cmd, sizeof(cmd), "bind \"%s\" \"%s\"\n",
+                        Key_KeynumToString(key), multiplayer_key_bindnames[item->generic.localdata[0]][0]);
+            Cbuf_InsertText(cmd);
+        }
+
+        Menu_SetStatusBar(&s_multiplayer_keys_menu, "ENTER to change, BACKSPACE to clear");
+        menukeyitem_bind = false;
+        return menu_out_sound;
+    }
+
+    key = Key_GetMenuKey(key);
+    switch (key)
+    {
+    case K_ENTER:
+        MultiplayerKeyBindingFunc(item);
+        return menu_in_sound;
+    case K_BACKSPACE: /* delete bindings */
+        M_UnbindCommand(multiplayer_key_bindnames[item->generic.localdata[0]][0], KEYS_ALL);
+        return menu_out_sound;
+    default:
+        return Default_MenuKey(&s_multiplayer_keys_menu, key);
+    }
+}
+
+static void
+M_Menu_Multiplayer_Keys_f(void)
+{
+    MultiplayerKeys_MenuInit();
+    M_PushMenu(MultiplayerKeys_MenuDraw, MultiplayerKeys_MenuKey);
+}
+
+/*
+ * GAME CONTROLLER ( GAMEPAD / JOYSTICK ) BUTTONS MENU
+ */
+
+char *controller_bindnames[][2] =
+{
+	{"+attack", "attack"},
+	{"+moveup", "up / jump"},
+	{"+movedown", "down / crouch"},
+	{"weapnext", "next weapon"},
+	{"weapprev", "previous weapon"},
+	{"cycleweap weapon_chaingun weapon_machinegun weapon_blaster", "long range: quickswitch 1"},
+	{"cycleweap weapon_supershotgun weapon_shotgun", "close range: quickswitch 2"},
+	{"cycleweap weapon_rocketlauncher weapon_grenadelauncher ammo_grenades", "explosives: quickswitch 3"},
+	{"cycleweap weapon_bfg weapon_railgun weapon_hyperblaster", "special: quickswitch 4"},
+	{"prefweap weapon_railgun weapon_hyperblaster weapon_chaingun weapon_supershotgun weapon_machinegun weapon_shotgun weapon_blaster", "best safe weapon"},
+	{"prefweap weapon_bfg weapon_railgun weapon_rocketlauncher weapon_hyperblaster weapon_grenadelauncher weapon_chaingun ammo_grenades weapon_supershotgun", "best unsafe weapon"},
+	{"centerview", "center view"},
+	{"inven", "inventory"},
+	{"invuse", "use item"},
+	{"invdrop", "drop item"},
+	{"invprev", "prev item"},
+	{"invnext", "next item"},
+	{"cmd help", "help computer"},
+	{"+joyaltselector", "alt buttons modifier"}
+};
+#define NUM_CONTROLLER_BINDNAMES (sizeof controller_bindnames / sizeof controller_bindnames[0])
+
+static menuframework_s s_controller_buttons_menu;
+static menuaction_s s_controller_buttons_actions[NUM_CONTROLLER_BINDNAMES];
+
+static void
+DrawControllerButtonBindingFunc(void *self)
+{
+	int keys[2];
+	menuaction_s *a = (menuaction_s *)self;
+	float scale = SCR_GetMenuScale();
+
+	M_FindKeysForCommand(controller_bindnames[a->generic.localdata[0]][0], keys, KEYS_CONTROLLER);
+
+	if (keys[0] == -1)
+	{
+		Menu_DrawString(a->generic.x + a->generic.parent->x + RCOLUMN_OFFSET * scale,
+				a->generic.y + a->generic.parent->y, "???");
+	}
+	else
+	{
+		int x;
+		const char *name;
+
+		name = Key_KeynumToString(keys[0]);
+
+		Menu_DrawString(a->generic.x + a->generic.parent->x + RCOLUMN_OFFSET * scale,
+			a->generic.y + a->generic.parent->y, name);
+
+		x = strlen(name) * 8;
+
+		if (keys[1] != -1)
+		{
+			Menu_DrawString(a->generic.x + a->generic.parent->x + 24 * scale + (x * scale),
+					a->generic.y + a->generic.parent->y, "or");
+			Menu_DrawString(a->generic.x + a->generic.parent->x + 48 * scale + (x * scale),
+					a->generic.y + a->generic.parent->y,
+					Key_KeynumToString(keys[1]));
+		}
+	}
+}
+
+static void
+ControllerButtonBindingFunc(void *self)
+{
+	menuaction_s *a = (menuaction_s *)self;
+	int keys[2];
+
+	M_FindKeysForCommand(controller_bindnames[a->generic.localdata[0]][0], keys, KEYS_CONTROLLER);
+
+	if (keys[1] != -1)
+	{
+		M_UnbindCommand(controller_bindnames[a->generic.localdata[0]][0], KEYS_CONTROLLER);
+	}
+
+	menukeyitem_bind = true;
+
+	Menu_SetStatusBar(&s_controller_buttons_menu, "press a button for this action");
+}
+
+static void
+ControllerButtons_MenuInit(void)
+{
+	int i;
+
+	s_controller_buttons_menu.x = (int)(viddef.width * 0.50f);
+	s_controller_buttons_menu.nitems = 0;
+	s_controller_buttons_menu.cursordraw = KeyCursorDrawFunc;
+
+	for (i = 0; i < NUM_CONTROLLER_BINDNAMES; i++)
+	{
+		s_controller_buttons_actions[i].generic.type = MTYPE_ACTION;
+		s_controller_buttons_actions[i].generic.flags = QMF_GRAYED;
+		s_controller_buttons_actions[i].generic.x = 0;
+		s_controller_buttons_actions[i].generic.y = (i * 9);
+		s_controller_buttons_actions[i].generic.ownerdraw = DrawControllerButtonBindingFunc;
+		s_controller_buttons_actions[i].generic.localdata[0] = i;
+		s_controller_buttons_actions[i].generic.name = controller_bindnames[s_controller_buttons_actions[i].generic.localdata[0]][1];
+
+		Menu_AddItem(&s_controller_buttons_menu, (void *)&s_controller_buttons_actions[i]);
+	}
+
+	Menu_SetStatusBar(&s_controller_buttons_menu, "BTN_A assigns, BTN_Y clears, BTN_B exits");
+	Menu_Center(&s_controller_buttons_menu);
+}
+
+static void
+ControllerButtons_MenuDraw(void)
+{
+	Menu_AdjustCursor(&s_controller_buttons_menu, 1);
+	Menu_Draw(&s_controller_buttons_menu);
+}
+
+static const char *
+ControllerButtons_MenuKey(int key)
+{
+	menuaction_s *item = (menuaction_s *)Menu_ItemAtCursor(&s_controller_buttons_menu);
+
+	if (menukeyitem_bind)
+	{
+		// Only controller buttons allowed
+		if (key >= K_JOY_FIRST_REGULAR && key != K_JOY_BACK)
+		{
+			char cmd[1024];
+
+			Com_sprintf(cmd, sizeof(cmd), "bind \"%s\" \"%s\"\n",
+					Key_KeynumToString(key), controller_bindnames[item->generic.localdata[0]][0]);
+			Cbuf_InsertText(cmd);
+		}
+
+		Menu_SetStatusBar(&s_controller_buttons_menu, "BTN_A assigns, BTN_Y clears, BTN_B exits");
+		menukeyitem_bind = false;
+		return menu_out_sound;
+	}
+
+	key = Key_GetMenuKey(key);
+	switch (key)
+	{
+		case K_ENTER:
+			ControllerButtonBindingFunc(item);
+			return menu_in_sound;
+		case K_BACKSPACE:
+			M_UnbindCommand(controller_bindnames[item->generic.localdata[0]][0], KEYS_CONTROLLER);
+			return menu_out_sound;
+		default:
+			return Default_MenuKey(&s_controller_buttons_menu, key);
+	}
+}
+
+static void
+M_Menu_ControllerButtons_f(void)
+{
+	ControllerButtons_MenuInit();
+	M_PushMenu(ControllerButtons_MenuDraw, ControllerButtons_MenuKey);
+}
+
+/*
+ * GAME CONTROLLER ALTERNATE BUTTONS MENU
+ */
+
+char *controller_alt_bindnames[][2] =
+{
+	{"weapnext", "next weapon"},
+	{"weapprev", "previous weapon"},
+	{"cycleweap weapon_chaingun weapon_machinegun weapon_blaster", "long range: quickswitch 1"},
+	{"cycleweap weapon_supershotgun weapon_shotgun", "close range: quickswitch 2"},
+	{"cycleweap weapon_rocketlauncher weapon_grenadelauncher ammo_grenades", "explosives: quickswitch 3"},
+	{"cycleweap weapon_bfg weapon_railgun weapon_hyperblaster", "special: quickswitch 4"},
+	{"prefweap weapon_railgun weapon_hyperblaster weapon_chaingun weapon_supershotgun weapon_machinegun weapon_shotgun weapon_blaster", "best safe weapon"},
+	{"prefweap weapon_bfg weapon_railgun weapon_rocketlauncher weapon_hyperblaster weapon_grenadelauncher weapon_chaingun ammo_grenades weapon_supershotgun", "best unsafe weapon"},
+	{"centerview", "center view"},
+	{"inven", "inventory"},
+	{"invuse", "use item"},
+	{"invdrop", "drop item"},
+	{"invprev", "prev item"},
+	{"invnext", "next item"},
+	{"use invulnerability", "use invulnerability"},
+	{"use rebreather", "use rebreather"},
+	{"use environment suit", "use environment suit"},
+	{"use power shield", "use power shield"},
+	{"use quad damage", "use quad damage"},
+	{"cmd help", "help computer"}
+};
+#define NUM_CONTROLLER_ALT_BINDNAMES (sizeof controller_alt_bindnames / sizeof controller_alt_bindnames[0])
+
+static menuframework_s s_controller_alt_buttons_menu;
+static menuaction_s s_controller_alt_buttons_actions[NUM_CONTROLLER_ALT_BINDNAMES];
+
+static void
+DrawControllerAltButtonBindingFunc(void *self)
+{
+	int keys[2];
+	menuaction_s *a = (menuaction_s *)self;
+	float scale = SCR_GetMenuScale();
+
+	M_FindKeysForCommand(controller_alt_bindnames[a->generic.localdata[0]][0], keys, KEYS_CONTROLLER_ALT);
+
+	if (keys[0] == -1)
+	{
+		Menu_DrawString(a->generic.x + a->generic.parent->x + RCOLUMN_OFFSET * scale,
+				a->generic.y + a->generic.parent->y, "???");
+	}
+	else
+	{
+		int x;
+		const char *name;
+
+		name = Key_KeynumToString(keys[0]);
+
+		Menu_DrawString(a->generic.x + a->generic.parent->x + RCOLUMN_OFFSET * scale,
+				a->generic.y + a->generic.parent->y, name);
+
+		x = strlen(name) * 8;
+
+		if (keys[1] != -1)
+		{
+			Menu_DrawString(a->generic.x + a->generic.parent->x + 24 * scale + (x * scale),
+					a->generic.y + a->generic.parent->y, "or");
+			Menu_DrawString(a->generic.x + a->generic.parent->x + 48 * scale + (x * scale),
+					a->generic.y + a->generic.parent->y,
+					Key_KeynumToString(keys[1]));
+		}
+	}
+}
+
+static void
+ControllerAltButtonBindingFunc(void *self)
+{
+	menuaction_s *a = (menuaction_s *)self;
+	int keys[2];
+
+	M_FindKeysForCommand(controller_alt_bindnames[a->generic.localdata[0]][0], keys, KEYS_CONTROLLER_ALT);
+
+	if (keys[1] != -1)
+	{
+		M_UnbindCommand(controller_alt_bindnames[a->generic.localdata[0]][0], KEYS_CONTROLLER_ALT);
+	}
+
+	menukeyitem_bind = true;
+
+	Menu_SetStatusBar(&s_controller_alt_buttons_menu, "press a button for this action");
+}
+
+static void
+ControllerAltButtons_MenuInit(void)
+{
+	int i;
+
+	s_controller_alt_buttons_menu.x = (int)(viddef.width * 0.50f);
+	s_controller_alt_buttons_menu.nitems = 0;
+	s_controller_alt_buttons_menu.cursordraw = KeyCursorDrawFunc;
+
+	for (i = 0; i < NUM_CONTROLLER_ALT_BINDNAMES; i++)
+	{
+		s_controller_alt_buttons_actions[i].generic.type = MTYPE_ACTION;
+		s_controller_alt_buttons_actions[i].generic.flags = QMF_GRAYED;
+		s_controller_alt_buttons_actions[i].generic.x = 0;
+		s_controller_alt_buttons_actions[i].generic.y = (i * 9);
+		s_controller_alt_buttons_actions[i].generic.ownerdraw = DrawControllerAltButtonBindingFunc;
+		s_controller_alt_buttons_actions[i].generic.localdata[0] = i;
+		s_controller_alt_buttons_actions[i].generic.name = controller_alt_bindnames[s_controller_alt_buttons_actions[i].generic.localdata[0]][1];
+
+		Menu_AddItem(&s_controller_alt_buttons_menu, (void *)&s_controller_alt_buttons_actions[i]);
+	}
+
+	Menu_SetStatusBar(&s_controller_alt_buttons_menu, "BTN_A assigns, BTN_Y clears, BTN_B exits");
+	Menu_Center(&s_controller_alt_buttons_menu);
+}
+
+static void
+ControllerAltButtons_MenuDraw(void)
+{
+	Menu_AdjustCursor(&s_controller_alt_buttons_menu, 1);
+	Menu_Draw(&s_controller_alt_buttons_menu);
+}
+
+static const char *
+ControllerAltButtons_MenuKey(int key)
+{
+	menuaction_s *item = (menuaction_s *)Menu_ItemAtCursor(&s_controller_alt_buttons_menu);
+
+	if (menukeyitem_bind)
+	{
+		// Only controller buttons allowed, different from the alt buttons modifier
+		if (key >= K_JOY_FIRST_REGULAR && key != K_JOY_BACK && (keybindings[key] == NULL || strcmp(keybindings[key], "+joyaltselector") != 0))
+		{
+			char cmd[1024];
+			key = key + (K_JOY_FIRST_REGULAR_ALT - K_JOY_FIRST_REGULAR);   // change input to its ALT mode
+
+			Com_sprintf(cmd, sizeof(cmd), "bind \"%s\" \"%s\"\n",
+					Key_KeynumToString(key), controller_alt_bindnames[item->generic.localdata[0]][0]);
+			Cbuf_InsertText(cmd);
+		}
+
+		Menu_SetStatusBar(&s_controller_alt_buttons_menu, "BTN_A assigns, BTN_Y clears, BTN_B exits");
+		menukeyitem_bind = false;
+		return menu_out_sound;
+	}
+
+	key = Key_GetMenuKey(key);
+	switch (key)
+	{
+		case K_ENTER:
+			ControllerAltButtonBindingFunc(item);
+			return menu_in_sound;
+		case K_BACKSPACE:
+			M_UnbindCommand(controller_alt_bindnames[item->generic.localdata[0]][0], KEYS_CONTROLLER_ALT);
+			return menu_out_sound;
+		default:
+			return Default_MenuKey(&s_controller_alt_buttons_menu, key);
+	}
+}
+
+static void
+M_Menu_ControllerAltButtons_f(void)
+{
+	ControllerAltButtons_MenuInit();
+	M_PushMenu(ControllerAltButtons_MenuDraw, ControllerAltButtons_MenuKey);
+}
+
+/*
  * JOY MENU
  */
 static menuslider_s s_joy_expo_slider;
@@ -1031,6 +1606,20 @@ static menuslider_s s_joy_forwardsensitivity_slider;
 static menuslider_s s_joy_sidesensitivity_slider;
 static menuslider_s s_joy_upsensitivity_slider;
 static menuslider_s s_joy_haptic_slider;
+static menuaction_s s_joy_customize_buttons_action;
+static menuaction_s s_joy_customize_alt_buttons_action;
+
+static void
+CustomizeControllerButtonsFunc(void *unused)
+{
+    M_Menu_ControllerButtons_f();
+}
+
+static void
+CustomizeControllerAltButtonsFunc(void *unused)
+{
+    M_Menu_ControllerAltButtons_f();
+}
 
 static void
 HapticMagnitudeFunc(void *unused)
@@ -1169,6 +1758,24 @@ Joy_MenuInit(void)
         s_joy_haptic_slider.maxvalue = 22;
         Menu_AddItem(&s_joy_menu, (void *)&s_joy_haptic_slider);
     }
+
+    y += 10;
+
+    s_joy_customize_buttons_action.generic.type = MTYPE_ACTION;
+    s_joy_customize_buttons_action.generic.x = 0;
+    s_joy_customize_buttons_action.generic.y = y;
+    y += 10;
+    s_joy_customize_buttons_action.generic.name = "customize buttons";
+    s_joy_customize_buttons_action.generic.callback = CustomizeControllerButtonsFunc;
+    Menu_AddItem(&s_joy_menu, (void *)&s_joy_customize_buttons_action);
+
+    s_joy_customize_alt_buttons_action.generic.type = MTYPE_ACTION;
+    s_joy_customize_alt_buttons_action.generic.x = 0;
+    s_joy_customize_alt_buttons_action.generic.y = y;
+    y += 10;
+    s_joy_customize_alt_buttons_action.generic.name = "customize alt buttons";
+    s_joy_customize_alt_buttons_action.generic.callback = CustomizeControllerAltButtonsFunc;
+    Menu_AddItem(&s_joy_menu, (void *)&s_joy_customize_alt_buttons_action);
 
     Menu_Center(&s_joy_menu);
 }
@@ -1539,7 +2146,7 @@ Options_MenuInit(void)
     s_options_customize_joy_action.generic.type = MTYPE_ACTION;
     s_options_customize_joy_action.generic.x = 0;
     s_options_customize_joy_action.generic.y = 130;
-    s_options_customize_joy_action.generic.name = "customize joystick";
+    s_options_customize_joy_action.generic.name = "customize gamepad";
     s_options_customize_joy_action.generic.callback = CustomizeJoyFunc;
 
     s_options_customize_options_action.generic.type = MTYPE_ACTION;
@@ -2206,6 +2813,8 @@ static void
 Mods_MenuInit(void)
 {
     int currentmod;
+    int x = 0;
+    int y = 0;
 
     Mods_NamesInit();
 
@@ -2223,17 +2832,18 @@ Mods_MenuInit(void)
 
     s_mods_list.generic.type = MTYPE_SPINCONTROL;
     s_mods_list.generic.name = "mod";
-    s_mods_list.generic.x = 0;
-    s_mods_list.generic.y = 0;
+    s_mods_list.generic.x = x;
+    s_mods_list.generic.y = y;
     s_mods_list.generic.callback = ModsListFunc;
     s_mods_list.itemnames = (const char **)modnames;
     s_mods_list.curvalue = currentmod < nummods ? currentmod : 0;
 
+    y += 20;
+
     s_mods_apply_action.generic.type = MTYPE_ACTION;
-    s_mods_apply_action.generic.flags = QMF_LEFT_JUSTIFY;
-    s_mods_apply_action.generic.name = " apply";
-    s_mods_apply_action.generic.x = 49;
-    s_mods_apply_action.generic.y = 20;
+    s_mods_apply_action.generic.name = "apply";
+    s_mods_apply_action.generic.x = x;
+    s_mods_apply_action.generic.y = y;
     s_mods_apply_action.generic.callback = ModsApplyActionFunc;
 
     Menu_AddItem(&s_mods_menu, (void *)&s_mods_list);
@@ -2387,7 +2997,7 @@ Game_MenuInit(void)
     s_hardp_game_action.generic.flags = QMF_LEFT_JUSTIFY;
     s_hardp_game_action.generic.x = 0;
     s_hardp_game_action.generic.y = 30;
-    s_hardp_game_action.generic.name = "nightmare";
+    s_hardp_game_action.generic.name = "hard+";
     s_hardp_game_action.generic.callback = HardpGameFunc;
 
     s_blankline.generic.type = MTYPE_SEPARATOR;
@@ -2460,88 +3070,6 @@ M_Menu_Game_f(void)
     m_game_cursor = 1;
 }
 
-/*
- * CONFIRM DELETE MENU
- */
-
-static void LoadGame_MenuInit(void);
-
-static menuframework_s s_confirmdeletesavegame_menu;
-static menuseparator_s s_deletesavegame_label;
-static menuaction_s s_confirmdeletesavegame_action;
-static menuaction_s s_canceldeletesavegame_action;
-
-void (*ParentInitFunc)(void);
-
-static void
-DeleteSaveGameCallback(void *self)
-{
-	char name[MAX_OSPATH];
-	menuaction_s *item = (menuaction_s *)self;
-
-	Com_sprintf(name, sizeof(name), "%s/save/save%d/", FS_Gamedir(), item->generic.localdata[0]);
-	Sys_RemoveDir(name);
-
-	ParentInitFunc();
-	M_PopMenu();
-}
-
-static void
-CancelDeleteSaveGameCallback(void *unused)
-{
-	M_PopMenu();
-}
-
-static const char *
-DeleteSaveGame_MenuKey(int key)
-{
-    return Default_MenuKey(&s_confirmdeletesavegame_menu, key);
-}
-
-static void
-DeleteSaveGame_MenuDraw(void)
-{
-    Menu_AdjustCursor(&s_confirmdeletesavegame_menu, 1);
-    Menu_Draw(&s_confirmdeletesavegame_menu);
-}
-
-static void
-ConfirmDeleteSaveGame_MenuInit(int i, void (*callback)(void))
-{
-	float scale = SCR_GetMenuScale();
-
-	ParentInitFunc = callback;
-
-	// 32 = strlen("Are you sure...")
-	s_confirmdeletesavegame_menu.x = viddef.width / 2 - (8 * 32 * scale / 2);
-	s_confirmdeletesavegame_menu.y = viddef.height / (2 * scale) - 58;
-	s_confirmdeletesavegame_menu.nitems = 0;
-
-	s_deletesavegame_label.generic.type = MTYPE_SEPARATOR;
-	s_deletesavegame_label.generic.name = "Are you sure you want to delete?";
-	s_deletesavegame_label.generic.x = 8 * scale * 32;
-	s_deletesavegame_label.generic.y = 0;
-	s_deletesavegame_label.generic.flags = QMF_LEFT_JUSTIFY;
-	Menu_AddItem(&s_confirmdeletesavegame_menu, &s_deletesavegame_label);
-
-	s_confirmdeletesavegame_action.generic.type = MTYPE_ACTION;
-	s_confirmdeletesavegame_action.generic.name = "yes";
-	s_confirmdeletesavegame_action.generic.x = scale * 32;
-	s_confirmdeletesavegame_action.generic.y = 20;
-	s_confirmdeletesavegame_action.generic.localdata[0] = i;
-	s_confirmdeletesavegame_action.generic.flags = QMF_LEFT_JUSTIFY;
-	s_confirmdeletesavegame_action.generic.callback = DeleteSaveGameCallback;
-	Menu_AddItem(&s_confirmdeletesavegame_menu, &s_confirmdeletesavegame_action);
-
-	s_canceldeletesavegame_action.generic.type = MTYPE_ACTION;
-	s_canceldeletesavegame_action.generic.name = "no";
-	s_canceldeletesavegame_action.generic.x = scale * 32;
-	s_canceldeletesavegame_action.generic.y = 30;
-	s_canceldeletesavegame_action.generic.flags = QMF_LEFT_JUSTIFY;
-	s_canceldeletesavegame_action.generic.callback = CancelDeleteSaveGameCallback;
-	Menu_AddItem(&s_confirmdeletesavegame_menu, &s_canceldeletesavegame_action);
-}
-
 
 /*
  * LOADGAME MENU
@@ -2567,6 +3095,18 @@ static menuaction_s s_loadgame_actions[MAX_SAVESLOTS + 1]; // One for quick
 
 static menuframework_s s_savegame_menu;
 static menuaction_s s_savegame_actions[MAX_SAVESLOTS + 1]; // One for quick
+
+/* DELETE SAVEGAME */
+
+static qboolean menukeyitem_delete = false;
+
+static void
+DeleteSaveGameFunc(void * self)
+{
+    menuaction_s * a = ( menuaction_s * )self;
+    menukeyitem_delete = true;
+    Menu_SetStatusBar( a->generic.parent, "are you sure you want to delete? y\\n" );
+}
 
 static void
 Create_Savestrings(void)
@@ -2747,7 +3287,28 @@ LoadGame_MenuKey(int key)
 {
     static menuframework_s *m = &s_loadgame_menu;
     int menu_key = Key_GetMenuKey(key);
-    menucommon_s *item;
+    menucommon_s * item = NULL;
+
+    if (menukeyitem_delete) {
+
+        item = Menu_ItemAtCursor( m );
+        menukeyitem_delete = false;
+
+        if ( menu_key == K_ENTER || menu_key == 'y' || menu_key == 'Y' ) {
+
+            char name[MAX_OSPATH] = { 0 };
+
+            Com_sprintf( name, sizeof( name ), "%s/save/save%d/", FS_Gamedir(),
+                item->localdata[0] );
+            Sys_RemoveDir( name );
+            LoadGame_MenuInit();
+
+        } else {
+            Menu_SetStatusBar( &s_loadgame_menu, m_loadsave_statusbar );
+        }
+
+        return menu_move_sound;
+    }
 
     switch (menu_key)
     {
@@ -2778,14 +3339,11 @@ LoadGame_MenuKey(int key)
         return menu_move_sound;
 
     case K_BACKSPACE:
-    case K_DEL:
-    case K_KP_DEL:
 		if ((item = Menu_ItemAtCursor(m)) != NULL)
 		{
 			if (item->type == MTYPE_ACTION)
 			{
-				ConfirmDeleteSaveGame_MenuInit(item->localdata[0], LoadGame_MenuInit);
-				M_PushMenu(DeleteSaveGame_MenuDraw, DeleteSaveGame_MenuKey);
+                            DeleteSaveGameFunc( item );
 			}
 		}
 
@@ -2893,12 +3451,33 @@ SaveGame_MenuKey(int key)
 {
     static menuframework_s *m = &s_savegame_menu;
     int menu_key = Key_GetMenuKey(key);
-    menucommon_s *item;
+    menucommon_s * item = NULL;
 
     if (m_popup_string)
     {
         m_popup_string = NULL;
         return NULL;
+    }
+
+    if (menukeyitem_delete) {
+
+        item = Menu_ItemAtCursor( m );
+        menukeyitem_delete = false;
+
+        if ( menu_key == K_ENTER || menu_key == 'y' || menu_key == 'Y' ) {
+
+            char name[MAX_OSPATH] = { 0 };
+
+            Com_sprintf( name, sizeof( name ), "%s/save/save%d/", FS_Gamedir(),
+                item->localdata[0] );
+            Sys_RemoveDir( name );
+            SaveGame_MenuInit();
+
+        } else {
+            Menu_SetStatusBar( &s_savegame_menu, m_loadsave_statusbar );
+        }
+
+        return menu_move_sound;
     }
 
     switch (menu_key)
@@ -2930,14 +3509,11 @@ SaveGame_MenuKey(int key)
         return menu_move_sound;
 
     case K_BACKSPACE:
-    case K_DEL:
-    case K_KP_DEL:
 		if ((item = Menu_ItemAtCursor(m)) != NULL)
 		{
 			if (item->type == MTYPE_ACTION)
 			{
-				ConfirmDeleteSaveGame_MenuInit(item->localdata[0], SaveGame_MenuInit);
-				M_PushMenu(DeleteSaveGame_MenuDraw, DeleteSaveGame_MenuKey);
+                            DeleteSaveGameFunc( item );
 			}
 		}
 
@@ -3235,6 +3811,8 @@ StartServerActionFunc(void *self)
     Cvar_SetValue("timelimit", ClampCvar(0, timelimit, timelimit));
     Cvar_SetValue("fraglimit", ClampCvar(0, fraglimit, fraglimit));
     Cvar_Set("hostname", s_hostname_field.buffer);
+
+	Cvar_SetValue("singleplayer", 0);
 
     if ((s_rules_box.curvalue < 2) || M_IsGame("rogue"))
     {
@@ -4925,6 +5503,10 @@ M_Menu_Quit_f(void)
 void
 M_Init(void)
 {
+    char cursorname[MAX_QPATH];
+    int w = 0;
+    int h = 0;
+
     Cmd_AddCommand("menu_main", M_Menu_Main_f);
     Cmd_AddCommand("menu_game", M_Menu_Game_f);
     Cmd_AddCommand("menu_loadgame", M_Menu_LoadGame_f);
@@ -4938,10 +5520,13 @@ M_Init(void)
     Cmd_AddCommand("menu_credits", M_Menu_Credits_f);
     Cmd_AddCommand("menu_mods", M_Menu_Mods_f);
     Cmd_AddCommand("menu_multiplayer", M_Menu_Multiplayer_f);
+    Cmd_AddCommand("menu_multiplayer_keys", M_Menu_Multiplayer_Keys_f);
     Cmd_AddCommand("menu_video", M_Menu_Video_f);
     Cmd_AddCommand("menu_options", M_Menu_Options_f);
     Cmd_AddCommand("menu_keys", M_Menu_Keys_f);
     Cmd_AddCommand("menu_joy", M_Menu_Joy_f);
+    Cmd_AddCommand("menu_buttons", M_Menu_ControllerButtons_f);
+    Cmd_AddCommand("menu_altbuttons", M_Menu_ControllerAltButtons_f);
     Cmd_AddCommand("menu_quit", M_Menu_Quit_f);
 
     /* initialize the server address book cvars (adr0, adr1, ...)
@@ -4951,6 +5536,19 @@ M_Init(void)
         char buffer[20];
         Com_sprintf(buffer, sizeof(buffer), "adr%d", index);
         Cvar_Get(buffer, "", CVAR_ARCHIVE);
+    }
+
+    // cache the cursor frames
+    for (int i = 0; i < NUM_CURSOR_FRAMES; i++)
+    {
+        Com_sprintf(cursorname, sizeof(cursorname), "m_cursor%d", i);
+        Draw_FindPic(cursorname);
+        Draw_GetPicSize(&w, &h, cursorname);
+
+        if (w > m_cursor_width)
+        {
+            m_cursor_width = w;
+        }
     }
 }
 

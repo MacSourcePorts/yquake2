@@ -223,48 +223,13 @@ Mod_ForName (char *name, model_t *parent_model, qboolean crash)
 	return mod;
 }
 
-
-/*
-===============
-Mod_PointInLeaf
-===============
-*/
-mleaf_t *
-Mod_PointInLeaf (vec3_t p, model_t *model)
-{
-	mnode_t		*node;
-
-	if (!model || !model->nodes)
-	{
-		ri.Sys_Error(ERR_DROP, "%s: bad model", __func__);
-		return NULL;
-	}
-
-	node = model->nodes;
-	while (node->contents == -1)
-	{
-		float d;
-		cplane_t *plane;
-
-		plane = node->plane;
-		d = DotProduct (p,plane->normal) - plane->dist;
-		if (d > 0)
-			node = node->children[0];
-		else
-			node = node->children[1];
-	}
-
-	return (mleaf_t *)node;
-}
-
-
 /*
 ==============
 Mod_ClusterPVS
 ==============
 */
-byte *
-Mod_ClusterPVS (int cluster, model_t *model)
+const byte *
+Mod_ClusterPVS (int cluster, const model_t *model)
 {
 	if (cluster == -1 || !model->vis)
 		return mod_novis;
@@ -292,26 +257,17 @@ by taking the brightest component
 static void
 Mod_LoadLighting (model_t *loadmodel, byte *mod_base, lump_t *l)
 {
-	int		i, size;
-	byte	*in;
+	int	size;
 
 	if (!l->filelen)
 	{
 		loadmodel->lightdata = NULL;
 		return;
 	}
-	size = l->filelen/3;
+
+	size = l->filelen;
 	loadmodel->lightdata = Hunk_Alloc(size);
-	in = (void *)(mod_base + l->fileofs);
-	for (i=0 ; i<size ; i++, in+=3)
-	{
-		if (in[0] > in[1] && in[0] > in[2])
-			loadmodel->lightdata[i] = in[0];
-		else if (in[1] > in[0] && in[1] > in[2])
-			loadmodel->lightdata[i] = in[1];
-		else
-			loadmodel->lightdata[i] = in[2];
-	}
+	memcpy(loadmodel->lightdata, mod_base + l->fileofs, size);
 }
 
 
@@ -410,25 +366,6 @@ Mod_LoadVertexes (model_t *loadmodel, byte *mod_base, lump_t *l)
 
 /*
 =================
-RadiusFromBounds
-=================
-*/
-static float
-RadiusFromBounds (vec3_t mins, vec3_t maxs)
-{
-	int		i;
-	vec3_t	corner;
-
-	for (i=0 ; i<3 ; i++)
-	{
-		corner[i] = fabs(mins[i]) > fabs(maxs[i]) ? fabs(mins[i]) : fabs(maxs[i]);
-	}
-
-	return VectorLength (corner);
-}
-
-/*
-=================
 Mod_LoadSubmodels
 =================
 */
@@ -474,7 +411,7 @@ Mod_LoadSubmodels (model_t *loadmodel, byte *mod_base, lump_t *l)
 			out->origin[j] = LittleFloat (in->origin[j]);
 		}
 
-		out->radius = RadiusFromBounds (out->mins, out->maxs);
+		out->radius = Mod_RadiusFromBounds (out->mins, out->maxs);
 		out->firstnode = LittleLong (in->headnode);
 		out->firstmodelsurface = LittleLong (in->firstface);
 		out->nummodelsurfaces = LittleLong (in->numfaces);
@@ -617,8 +554,8 @@ CalcSurfaceExtents (model_t *loadmodel, msurface_t *s)
 	mtexinfo_t	*tex;
 	int		bmins[2], bmaxs[2];
 
-	mins[0] = mins[1] = INT_MAX; // Set maximum values for world range
-	maxs[0] = maxs[1] = INT_MIN; // Set minimal values for world range
+	mins[0] = mins[1] = (float)INT_MAX; // Set maximum values for world range
+	maxs[0] = maxs[1] = (float)INT_MIN; // Set minimal values for world range
 
 	tex = s->texinfo;
 
@@ -718,9 +655,13 @@ Mod_LoadFaces (model_t *loadmodel, byte *mod_base, lump_t *l)
 			out->styles[i] = in->styles[i];
 		i = LittleLong(in->lightofs);
 		if (i == -1)
+		{
 			out->samples = NULL;
+		}
 		else
-			out->samples = loadmodel->lightdata + i/3;
+		{
+			out->samples = loadmodel->lightdata + i;
+		}
 
 		// set the drawing flags flag
 
@@ -1062,10 +1003,12 @@ Mod_LoadBrushModel(model_t *mod, void *buffer, int modfilelen)
 	if(surfEdgeCount < MAX_MAP_SURFEDGES) // else it errors out later anyway
 		hunkSize += calcLumpHunkSize(&header->lumps[LUMP_SURFEDGES], sizeof(int), sizeof(int), 24);
 
-	// lighting is a special case, because we keep only 1 byte out of 3 (=> no colored lighting in soft renderer)
+	// lighting is a special case, because we keep only 1 byte out of 3
+	// (=> no colored lighting in soft renderer by default)
 	{
-		int size = header->lumps[LUMP_LIGHTING].filelen/3;
+		int size = header->lumps[LUMP_LIGHTING].filelen;
 		size = (size + 31) & ~31;
+		/* save color data */
 		hunkSize += size;
 	}
 

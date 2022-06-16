@@ -196,14 +196,19 @@ ThrowGib(edict_t *self, char *gibname, int damage, int type)
 		return;
 	}
 
-	gibsthisframe++;
-
-	if (gibsthisframe > MAX_GIBS)
+	if (gibsthisframe >= MAX_GIBS)
 	{
 		return;
 	}
 
-	gib = G_Spawn();
+	gib = G_SpawnOptional();
+
+	if (!gib)
+	{
+		return;
+	}
+
+	gibsthisframe++;
 
 	VectorScale(self->size, 0.5, size);
 	VectorAdd(self->absmin, size, origin);
@@ -272,6 +277,11 @@ ThrowHead(edict_t *self, char *gibname, int damage, int type)
 	self->targetname = NULL;
 	self->die = gib_die;
 
+	// The entity still has the monsters clipmaks.
+	// Reset it to MASK_SHOT to be on the save side.
+	// (MASK_SHOT is used by xatrix)
+	self->clipmask = MASK_SHOT;
+
 	if (type == GIB_ORGANIC)
 	{
 		self->movetype = MOVETYPE_TOSS;
@@ -330,6 +340,11 @@ ThrowClientHead(edict_t *self, int damage)
 	self->s.sound = 0;
 	self->flags |= FL_NO_KNOCKBACK;
 
+	// The entity still has the monsters clipmaks.
+	// Reset it to MASK_SHOT to be on the save side.
+	// (MASK_SHOT is used by xatrix)
+	self->clipmask = MASK_SHOT;
+
 	self->movetype = MOVETYPE_BOUNCE;
 	VelocityForDamage(damage, vd);
 	VectorAdd(self->velocity, vd, self->velocity);
@@ -373,14 +388,20 @@ ThrowDebris(edict_t *self, char *modelname, float speed, vec3_t origin)
 		return;
 	}
 
-	debristhisframe++;
-
-	if (debristhisframe > MAX_DEBRIS)
+	if (debristhisframe >= MAX_DEBRIS)
 	{
 		return;
 	}
 
-	chunk = G_Spawn();
+	chunk = G_SpawnOptional();
+
+	if (!chunk)
+	{
+		return;
+	}
+
+	debristhisframe++;
+
 	VectorCopy(origin, chunk->s.origin);
 	gi.setmodel(chunk, modelname);
 	v[0] = 100 * crandom();
@@ -1626,10 +1647,7 @@ commander_body_die(edict_t *self, edict_t *inflictor /* unused */,
 	{
 		gi.sound(self, CHAN_BODY, gi.soundindex("tank/pain.wav"), 1, ATTN_NORM, 0);
 
-		for (n = 0; n < 1; n++)
-		{
-			ThrowGib(self, "models/objects/gibs/sm_meat/tris.md2", damage, GIB_ORGANIC);
-		}
+		ThrowGib(self, "models/objects/gibs/sm_meat/tris.md2", damage, GIB_ORGANIC);
 
 		for (n = 0; n < 4; n++)
 		{

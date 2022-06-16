@@ -963,6 +963,7 @@ SP_func_rotating(edict_t *ent)
 	}
 
 	ent->use = rotating_use;
+	ent->blocked = rotating_blocked;
 
 	if (ent->spawnflags & 1)
 	{
@@ -1377,7 +1378,7 @@ door_go_down(edict_t *self)
 void
 door_go_up(edict_t *self, edict_t *activator)
 {
-	if (!self || !activator)
+	if (!self)
 	{
 		return;
 	}
@@ -1840,13 +1841,6 @@ SP_func_door(edict_t *ent)
 	else
 	{
 		ent->think = Think_SpawnDoorTrigger;
-	}
-
-	/* Map quirk for waste3 (to make that secret armor behind
-	 * the secret wall - this func_door - count, #182) */
-	if (Q_stricmp(level.mapname, "waste3") == 0 && Q_stricmp(ent->model, "*12") == 0)
-	{
-		ent->target = "t117";
 	}
 }
 

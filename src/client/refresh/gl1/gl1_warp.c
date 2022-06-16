@@ -31,19 +31,18 @@
 #define ON_EPSILON 0.1 /* point on plane side epsilon */
 #define MAX_CLIP_VERTS 64
 
-extern model_t *loadmodel;
 char skyname[MAX_QPATH];
 float skyrotate;
 vec3_t skyaxis;
 image_t *sky_images[6];
 msurface_t *warpface;
 int skytexorder[6] = {0, 2, 1, 3, 4, 5};
- 
+
 GLfloat vtx_sky[12];
 GLfloat tex_sky[8];
 unsigned int index_vtx = 0;
 unsigned int index_tex = 0;
- 
+
 /* 3dstudio environment map names */
 char *suf[6] = {"rt", "bk", "lf", "ft", "up", "dn"};
 
@@ -243,7 +242,7 @@ R_SubdividePolygon(int numverts, float *verts)
  * can be done reasonably.
  */
 void
-R_SubdivideSurface(msurface_t *fa)
+R_SubdivideSurface(model_t *loadmodel, msurface_t *fa)
 {
 	vec3_t verts[64];
 	int numverts;
@@ -298,11 +297,24 @@ R_EmitWaterPolys(msurface_t *fa)
 		scroll = 0;
 	}
 
+	// workaround for lack of VLAs (=> our workaround uses alloca() which is bad in loops)
+#ifdef _MSC_VER
+	int maxNumVerts = 0;
+	for ( glpoly_t* tmp = fa->polys; tmp; tmp = tmp->next )
+	{
+		if (tmp->numverts > maxNumVerts)
+			maxNumVerts = tmp->numverts;
+	}
+
+	YQ2_VLA( GLfloat, tex, 2 * maxNumVerts );
+#endif
+
 	for (bp = fa->polys; bp; bp = bp->next)
 	{
 		p = bp;
-
-        GLfloat tex[2*p->numverts];
+#ifndef _MSC_VER // we have real VLAs, so it's safe to use one in this loop
+        YQ2_VLA(GLfloat, tex, 2*p->numverts);
+#endif
         unsigned int index_tex = 0;
 
 		for ( i = 0, v = p->verts [ 0 ]; i < p->numverts; i++, v += VERTEXSIZE )
@@ -330,6 +342,8 @@ R_EmitWaterPolys(msurface_t *fa)
         glDisableClientState( GL_VERTEX_ARRAY );
         glDisableClientState( GL_TEXTURE_COORD_ARRAY );
 	}
+
+	YQ2_VLAFREE( tex );
 }
 
 void

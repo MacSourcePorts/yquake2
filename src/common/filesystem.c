@@ -25,7 +25,9 @@
  * =======================================================================
  */
 
+#ifndef _MSC_VER
 #include <libgen.h>
+#endif
 
 #include "header/common.h"
 #include "header/glob.h"
@@ -369,13 +371,65 @@ FS_FCloseFile(fileHandle_t f)
  * for streaming data out of either a pak file or a seperate file.
  */
 int
-FS_FOpenFile(const char *name, fileHandle_t *f, qboolean gamedir_only)
+FS_FOpenFile(const char *rawname, fileHandle_t *f, qboolean gamedir_only)
 {
 	char path[MAX_OSPATH], lwrName[MAX_OSPATH];
 	fsHandle_t *handle;
 	fsPack_t *pack;
 	fsSearchPath_t *search;
 	int i;
+
+	// Remove self references and empty dirs from the requested path.
+	// ZIPs and PAKs don't support them, but they may be hardcoded in
+	// some custom maps or models.
+	char name[MAX_QPATH] = {0};
+	size_t namelen = strlen(rawname);
+	for (int input = 0, output = 0; input < namelen; input++)
+	{
+		// Remove self reference.
+		if (rawname[input] == '.')
+		{
+			if (output > 0)
+			{
+				// Inside the path.
+				if (name[output - 1] == '/' && rawname[input + 1] == '/')
+				{
+					input++;
+					continue;
+				}
+			}
+			else
+			{
+				// At the beginning. Note: This is save because the Quake II
+				// VFS doesn't have a current working dir. Paths are always
+				// absolute.
+				if (rawname[input + 1] == '/')
+				{
+					continue;
+				}
+			}
+		}
+
+		// Empty dir.
+		if (rawname[input] == '/')
+		{
+			if (rawname[input + 1] == '/')
+			{
+				continue;
+			}
+		}
+
+		// Pathes starting with a /. I'm not sure if this is
+		// a problem. It shouldn't hurt to remove the leading
+		// slash, though.
+		if (rawname[input] == '/' && output == 0)
+		{
+			continue;
+		}
+
+		name[output] = rawname[input];
+		output++;
+	}
 
 	file_from_protected_pak = false;
 	handle = FS_HandleForFile(name, f);
@@ -1562,6 +1616,25 @@ FS_GetNextRawPath(const char* lastRawPath)
 	return NULL;
 }
 
+#ifdef _MSC_VER // looks like MSVC/the Windows CRT doesn't have basename()
+// returns the last part of the given pathname, after last (back)slash
+// if the last character is a (back)slash, it's removed (set to '\0')
+static char* basename( char* n )
+{
+	size_t l = strlen(n);
+	while (n[l - 1] == '\\' || n[l - 1] == '/') // cut off trailing (back)slashes, if any
+	{
+		--l;
+		n[l] = '\0';
+	}
+	char* r1 = strrchr(n, '\\');
+	char* r2 = strrchr(n, '/');
+	if (r1 != NULL)
+		return (r2 == NULL || r1 > r2) ? (r1 + 1) : (r2 + 1);
+	return (r2 != NULL) ? (r2 + 1) : n;
+}
+#endif // _MSC_VER
+
 void
 FS_AddDirToSearchPath(char *dir, qboolean create) {
 	char *file;
@@ -1577,11 +1650,8 @@ FS_AddDirToSearchPath(char *dir, qboolean create) {
 
 	// The directory must not end with an /. It would
 	// f*ck up the logic in other parts of the game...
-	if (dir[len - 1] == '/')
+	if (dir[len - 1] == '/' || dir[len - 1] == '\\')
 	{
-		dir[len - 1] = '\0';
-	}
-	else if (dir[len - 1] == '\\') {
 		dir[len - 1] = '\0';
 	}
 
@@ -1919,7 +1989,7 @@ static void FS_AddDirToRawPath (const char *rawdir, qboolean create, qboolean re
 	}
 
 	// Make sure that the dir doesn't end with a slash.
-	for (size_t s = strlen(dir) - 1; s >= 0; s--)
+	for (size_t s = strlen(dir) - 1; s > 0; s--)
 	{
 		if (dir[s] == '/')
 		{

@@ -29,7 +29,6 @@
 #include "../header/client.h"
 #include "header/qmenu.h"
 
-static void Action_DoEnter(menuaction_s *a);
 static void Action_Draw(menuaction_s *a);
 static void Menu_DrawStatusBar(const char *string);
 static void MenuList_Draw(menulist_s *l);
@@ -39,20 +38,33 @@ static void Slider_Draw(menuslider_s *s);
 static void SpinControl_Draw(menulist_s *s);
 static void SpinControl_DoSlide(menulist_s *s, int dir);
 
-#define RCOLUMN_OFFSET 16
-#define LCOLUMN_OFFSET -16
-
 extern viddef_t viddef;
 
 #define VID_WIDTH viddef.width
 #define VID_HEIGHT viddef.height
 
-void
-Action_DoEnter(menuaction_s *a)
+/*
+=================
+Bitmap_Draw
+=================
+*/
+void Bitmap_Draw(menubitmap_s * item)
 {
-	if (a->generic.callback)
+	float scale = SCR_GetMenuScale();
+	float x = 0.0f;
+	float y = 0.0f;
+
+	x = item->generic.x;
+	y = item->generic.y;
+
+	if (((item->generic.flags & QMF_HIGHLIGHT_IF_FOCUS) &&
+		(Menu_ItemAtCursor(item->generic.parent) == item)))
 	{
-		a->generic.callback(a);
+		Draw_PicScaled(x * scale, y * scale, item->focuspic, scale);
+	}
+	else if (item->generic.name)
+	{
+		Draw_PicScaled(x * scale, y * scale, ( char * )item->generic.name, scale);
 	}
 }
 
@@ -324,7 +336,8 @@ Menu_AdjustCursor(menuframework_s *m, int dir)
 	{
 		if ((citem = Menu_ItemAtCursor(m)) != 0)
 		{
-			if (citem->type != MTYPE_SEPARATOR)
+			if (citem->type != MTYPE_SEPARATOR &&
+				(citem->flags & QMF_INACTIVE) != QMF_INACTIVE)
 			{
 				return;
 			}
@@ -341,7 +354,8 @@ Menu_AdjustCursor(menuframework_s *m, int dir)
 
 			if (citem)
 			{
-				if (citem->type != MTYPE_SEPARATOR)
+				if (citem->type != MTYPE_SEPARATOR &&
+				(citem->flags & QMF_INACTIVE) != QMF_INACTIVE)
 				{
 					break;
 				}
@@ -363,7 +377,8 @@ Menu_AdjustCursor(menuframework_s *m, int dir)
 
 			if (citem)
 			{
-				if (citem->type != MTYPE_SEPARATOR)
+				if (citem->type != MTYPE_SEPARATOR &&
+				(citem->flags & QMF_INACTIVE) != QMF_INACTIVE)
 				{
 					break;
 				}
@@ -415,6 +430,10 @@ Menu_Draw(menuframework_s *menu)
 			case MTYPE_SPINCONTROL:
 				SpinControl_Draw((menulist_s *)menu->items[i]);
 				break;
+			case MTYPE_BITMAP:
+			{
+				Bitmap_Draw(( menubitmap_s * )menu->items[i]);
+			} break;
 			case MTYPE_ACTION:
 				Action_Draw((menuaction_s *)menu->items[i]);
 				break;
@@ -434,7 +453,7 @@ Menu_Draw(menuframework_s *menu)
 	{
 		menu->cursordraw(menu);
 	}
-	else if (item && (item->type != MTYPE_FIELD))
+	else if (item && (item->type != MTYPE_FIELD) && item->type != MTYPE_BITMAP)
 	{
 		if (item->flags & QMF_LEFT_JUSTIFY)
 		{
@@ -554,22 +573,13 @@ Menu_ItemAtCursor(menuframework_s *m)
 qboolean
 Menu_SelectItem(menuframework_s *s)
 {
-	menucommon_s *item = (menucommon_s *)Menu_ItemAtCursor(s);
+	menucommon_s * item = ( menucommon_s * )Menu_ItemAtCursor(s);
 
-	if (item)
-	{
-		switch (item->type)
-		{
-			case MTYPE_FIELD:
-				return Field_DoEnter((menufield_s *)item);
-			case MTYPE_ACTION:
-				Action_DoEnter((menuaction_s *)item);
-				return true;
-			case MTYPE_LIST:
-				return false;
-			case MTYPE_SPINCONTROL:
-				return false;
-		}
+	if (item->callback) {
+
+		item->callback(item);
+
+		return true;
 	}
 
 	return false;

@@ -9,7 +9,7 @@ have been renamed. The prefixes are:
 * `cl_`: Client.
 * `gl_`: Common to all OpenGL renderers.
 * `gl1_`: OpenGL 1.4 renderer.
-* `gl3_`: OpenGL 3.2 renderer.
+* `gl3_`: OpenGL 3.2 and OpenGL ES3 renderers.
 * `ogg_`: Ogg/Vorbis music playback.
 * `r_`: Common to all renderers.
 * `s_`: Sound system.
@@ -54,27 +54,71 @@ it's `+set busywait 0` (setting the `busywait` cvar) and `-portable`
   is a very accurate way to determine the internal timing, but comes with
   a relatively high CPU usage. If set to `0` Quake II lays itself to
   sleep and tells the operating system to send a wakeup signal when it's
-  time for the next frame. The later is more CPU friendly but rather
-  inaccurate, especially on Windows. Use with care.
+  time for the next frame. The latter is more CPU friendly but can be
+  rather inaccurate, especially on Windows. Use with care.
+
+* **cl_maxfps**: The approximate framerate for client/server ("packet")
+  frames if *cl_async* is `1`. If set to `-1` (the default), the engine
+  will choose a packet framerate appropriate for the render framerate.  
+  See `cl_async` for more information.
+
+* **cl_async**: Run render frames independently of client/server frames.  
+  If set to `0`, client, server (gamecode) and the renderer run synchronous,
+  (like Quake2 originally did) which means that for every rendered frame
+  a client- and server-frame is executed, which includes the gamecode and
+  physics/movement-simulation etc. At higher framerates (above 95 or so)
+  this leads to movement bugs, like being able to jump higher than expected
+  (kind of like the infamous Quake 3 125Hz bug).  
+  For `cl_async 0`, *vid_maxfps* (or, if vsync is enabled, the display
+  refresh rate) is used and *cl_maxfps* is ignored.
+  
+  If *cl_async* is set to `1` (the default) the client is asynchronous,
+  which means that there can be multiple render frames between client-
+  and server-frames. This makes it possible to renderer as many frames
+  as desired without physics and movement problems. 
+  The client framerate is controlled by *cl_maxfps*,
+  the renderer framerate is controlled by *vid_maxfps*.  
+  
+  As client/server frames ("packet frames") are only run together with
+  a render frame, the *real* client/server framerate is always rounded to
+  a fraction of the renderframerate that's closest to *cl_maxfps*.  
+  So if for example *vid_maxfps* is `60` and *cl_maxfps* is `50`, it will
+  be rounded to `60` and every renderframe is also a packet frame.  
+  If *vid_maxfps* is `60` and *cl_maxfps* is `40`, it will be rounded to
+  `30` and every second render frame is also a packet frame.
+  
+  It seems like the best working packet framerate is `60` (which means that
+  the render framerate should be a multiple of that), otherwise values
+  between `45` and `90` seem to work ok, lower and higher values can lead
+  to buggy movement, jittering and other issues.  
+  Setting *cl_maxfps* to `-1` (the default since 8.02) will automatically
+  choose a packet framerate that's *both* a fraction of *vid_maxfps*
+  (or display refreshrate if vsync is on) *and* between 45 and 90.
+  
+* **cl_http_downloads**: Allow HTTP download. Set to `1` by default, set
+  to `0` to disable.
+
+* **cl_http_filelists**: Allow downloading and processing of filelists.
+  A filelist can contain an arbitrary number of files which are
+  downloaded as soon asthe filelist is found on the server. Set to `1`
+  by default, set to `0` to disable.
+
+* **cl_http_max_connections**: Maximum number of parallel downloads. Set
+  to `4` by default. A higher number may help with slow servers.
+
+* **cl_http_proxy**: Proxy to use, empty by default.
+
+* **cl_http_show_dw_progress**: Show a HTTP download progress bar.
+
+* **cl_http_bw_limit_rate**: Average speed transfer threshold for
+`cl_http_bw_limit_tmout` variable. Set `0` by default.
+
+* **cl_http_bw_limit_tmout**: Seconds before the download is aborted
+when the speed transfer is below the var set by `cl_http_bw_limit_rate`.
+Set `0` by default.
 
 * **cl_kickangles**: If set to `0` angle kicks (weapon recoil, damage
   hits and the like) are ignored. Cheat-protected. Defaults to `1`.
-
-* **cl_async**: If set to `1` (the default) the client is asynchronous.
-  The client framerate is fixed, the renderer framerate is variable.
-  This makes it possible to renderer as many frames as desired without
-  any physics and movement problems. The client framerate is controlled
-  by *cl_maxfps*, set to `60` by default. The renderer framerate is
-  controlled by *vid_maxfps*. There are two constraints:
-
-  * *vid_maxfps* must be the same or greater than *cl_maxfps*.
-  * In case that the vsync is active, *vid_maxfps* must not be lower
-	than the display refresh rate.
-
-  Both constraints are enforced.
-
-  If *cl_async* is set to `0` *vid_maxfps* is the same as *cl_maxfps*,
-  use *cl_maxfps* to set the framerate.
 
 * **cl_limitsparksounds**: If set to `1` the number of sound generated
   when shooting into power screen and power shields is limited to 16.
@@ -101,6 +145,13 @@ it's `+set busywait 0` (setting the `busywait` cvar) and `-portable`
   it's always grabbed. If set to `2` (the default) the mouse is grabbed
   during gameplay and released otherwise (in menu, videos, console or if
   game is paused).
+
+* **in_sdlbackbutton**: Defines which button is used in the gamepad or
+  joystick as the `Esc` key, that is, to be able to access the menu
+  and 'cancel'/'go back' on its options. When set to `0` (the default)
+  the Back/Select/Minus button is used. Set this to `1` to use the
+  Start/Menu/Plus button, and to `2` to use the Guide/Home/PS button.
+  Requires a game restart when changed.
 
 * **singleplayer**: Only available in the dedicated server. Vanilla
   Quake II enforced that either `coop` or `deathmatch` is set to `1`
@@ -274,14 +325,24 @@ it's `+set busywait 0` (setting the `busywait` cvar) and `-portable`
   anti aliasing is expensive and can lead to a huge performance hit, so
   try setting it to a lower value if the framerate is too low.
 
-* **r_nolerp_list**: list separate by spaces of textures omitted from
-  bilinear filtering. Used by default to exclude the console and HUD
-  fonts.  Make sure to include the default values when extending the
-  list.
+* **r_videos_unfiltered**: If set to `1`, don't use bilinear texture
+  filtering on videos (defaults to `0`).
+
+* **r_2D_unfiltered**: If set to `1`, don't filter textures of 2D
+  elements like menus and the HUD (defaults to `0`).
+
+* **r_lerp_list**: List separated by spaces of 2D textures that *should*
+  be filtered bilinearly, even if `r_2D_unfiltered` is set to `1`.
+
+* **r_nolerp_list**: List separated by spaces of textures omitted from
+  bilinear filtering (mostly relevant if `r_2D_unfiltered` is `0`).
+  Used by default to exclude the console and HUD font and crosshairs.
+  Make sure to include the default values when extending the list.
 
 * **r_retexturing**: If set to `1` (the default) and a retexturing pack
   is installed, the high resolution textures are used.
-  If set to `2` and vulkan render is used, scale up all 8bit textures.
+
+* **r_scale8bittextures**: If set to `1`, scale up all 8bit textures.
 
 * **r_shadows**: Enables rendering of shadows. Quake IIs shadows are
   very simple and are prone to render errors.
@@ -308,16 +369,16 @@ it's `+set busywait 0` (setting the `busywait` cvar) and `-portable`
   It's recommended to use the displays native resolution with the
   fullscreen window, use `r_mode -2` to switch to it.
 
-* **vid_maxfps**: The maximum framerate, if `cl_async` is `1`. Otherwise
-  `cl_maxfps` is used as maximum framerate. See `cl_async` description
-  above for more information.  *Note* that vsync (`r_vsync`) also
-  restricts the framerate to the monitor refresh rate, so if vsync is
-  enabled, the game won't render more than frame than the display can
-  show.
+* **vid_maxfps**: The maximum framerate. *Note* that vsync (`r_vsync`) 
+  also restricts the framerate to the monitor refresh rate, so if vsync
+  is enabled, the game won't render more than frame than the display can
+  show. Defaults to `300`.  
+  Related to this: *cl_maxfps* and *cl_async*.
 
 * **vid_renderer**: Selects the renderer library. Possible options are
   `gl1` (the default) for the old OpenGL 1.4 renderer, `gl3` for the
-  OpenGL 3.2 renderer and `soft` for the software renderer.
+  OpenGL 3.2 renderer, `gles3` for the OpenGL ES3 renderer
+  and `soft` for the software renderer.
 
 
 ## Graphics (GL renderers only)
@@ -327,6 +388,15 @@ it's `+set busywait 0` (setting the `busywait` cvar) and `-portable`
   the overlapping surfaces to mitigate the flickering. This may make
   things better or worse, depending on the map.
 
+* **gl_texturemode**: How textures are filtered.
+  - `GL_NEAREST`: No filtering (using value of *nearest* source pixel),
+    mipmaps not used
+  - `GL_LINEAR`: Bilinear filtering, mipmaps not used
+  - `GL_LINEAR_MIPMAP_NEAREST`: The default - Bilinear filtering when
+    scaling up, using mipmaps with nearest/no filtering when scaling down
+  
+  Other supported values: `GL_NEAREST_MIPMAP_NEAREST`,
+  `GL_NEAREST_MIPMAP_LINEAR`, `GL_LINEAR_MIPMAP_LINEAR`
 
 ## Graphics (OpenGL 1.4 only)
 
@@ -347,7 +417,7 @@ it's `+set busywait 0` (setting the `busywait` cvar) and `-portable`
   look a bit better (no flickering) by using the stencil buffer.
 
 
-## Graphics (OpenGL 3.2 only)
+## Graphics (OpenGL 3.2 and OpenGL ES3 only)
 
 * **gl3_debugcontext**: Enables the OpenGL 3.2 renderers debug context,
   e.g. prints warnings and errors emitted by the GPU driver.  Not
@@ -378,6 +448,15 @@ it's `+set busywait 0` (setting the `busywait` cvar) and `-portable`
 * **gl3_particle_square**: If set to `1`, particles are rendered as
   squares, like in the old software renderer or Quake 1. Default is `0`.
 
+* **gl3_colorlight**: When set to `0`, the lights and lightmaps are
+  colorless (greyscale-only), like in the original soft renderer.
+  Default is `1`.
+
+* **gl3_usefbo**: When set to `1` (the default), an OpenGL Framebuffer
+  Object is used to implement a warping underwater-effect (like the
+  software renderer has). Set to `0` to disable this, in case you don't
+  like the effect or it's too slow on your machine.
+
 
 ## Graphics (Software only)
 
@@ -386,6 +465,7 @@ it's `+set busywait 0` (setting the `busywait` cvar) and `-portable`
   custom gun field of view is used. Defaults to `8`, which is more or
   less optimal for the default gun field of view of 80.
 
+* **sw_colorlight**: enable experimental color lighting.
 
 ## cvar operations
 

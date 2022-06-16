@@ -64,6 +64,83 @@ R_TextureAnimation (const entity_t *currententity, mtexinfo_t *tex)
 	return tex->image;
 }
 
+/*
+ * Color light apply is not required
+ */
+static qboolean
+R_GreyscaledLight(const light3_t light)
+{
+	light3_t light_masked;
+
+	light_masked[0] = light[0] & LIGHTMASK;
+	light_masked[1] = light[1] & LIGHTMASK;
+	light_masked[2] = light[2] & LIGHTMASK;
+
+	if (light_masked[0] == light_masked[1] && light_masked[0] == light_masked[2])
+		return light_masked[0];
+
+	return LIGHTMASK;
+}
+
+static void
+R_DrawSurfaceBlock_Light (pixel_t *prowdest, pixel_t *psource, size_t size,
+						int level, light3_t lightleft, light3_t lightright)
+{
+	int light_masked_right, light_masked_left;
+
+	light_masked_right = R_GreyscaledLight(lightright);
+	if (light_masked_right != LIGHTMASK)
+	{
+		light_masked_left = R_GreyscaledLight(lightleft);
+	}
+
+	// Full same light from both side
+	if (light_masked_right != LIGHTMASK && light_masked_left == light_masked_right)
+	{
+		pixel_t *dest, *dest_max, *src;
+
+		dest = prowdest;
+		dest_max = prowdest + size;
+		src = psource;
+
+		while (dest < dest_max)
+		{
+			*dest = vid_colormap[*src + light_masked_right];
+
+			dest++;
+			src++;
+		}
+
+		return;
+	}
+
+	// same color light shades
+	{
+		int b, j;
+		light3_t lightstep, light;
+
+		for(j=0; j<3; j++)
+		{
+			int lighttemp;
+
+			lighttemp = lightleft[j] - lightright[j];
+			lightstep[j] = lighttemp >> level;
+		}
+
+		memcpy(light, lightright, sizeof(light3_t));
+
+		for (b=(size-1); b>=0; b--)
+		{
+			pixel_t pix;
+			pix = psource[b];
+			prowdest[b] = R_ApplyLight(pix, light);
+
+			for(j=0; j<3; j++)
+				light[j] += lightstep[j];
+		}
+	}
+}
+
 
 /*
 ================
@@ -73,8 +150,8 @@ R_DrawSurfaceBlock8_anymip
 static void
 R_DrawSurfaceBlock8_anymip (int level, int surfrowbytes)
 {
-	int		v, i, b, lightstep, lighttemp, light, size;
-	unsigned char	pix, *psource, *prowdest;
+	int		v, i, size;
+	pixel_t	*psource, *prowdest;
 
 	size = 1 << level;
 	psource = pbasesource;
@@ -82,34 +159,33 @@ R_DrawSurfaceBlock8_anymip (int level, int surfrowbytes)
 
 	for (v=0 ; v<r_numvblocks ; v++)
 	{
-		int	lightleft, lightright;
-		int	lightleftstep, lightrightstep;
+		light3_t	lightleft, lightright;
+		light3_t	lightleftstep, lightrightstep;
 
 		// FIXME: use delta rather than both right and left, like ASM?
-		lightleft = r_lightptr[0];
-		lightright = r_lightptr[1];
-		r_lightptr += r_lightwidth;
-		lightleftstep = (r_lightptr[0] - lightleft) >> level;
-		lightrightstep = (r_lightptr[1] - lightright) >> level;
+		memcpy(lightleft, r_lightptr, sizeof(light3_t));
+		memcpy(lightright, r_lightptr + 3, sizeof(light3_t));
+		r_lightptr += r_lightwidth * 3;
+		for(i=0; i<3; i++)
+		{
+			lightleftstep[i] = (r_lightptr[i] - lightleft[i]) >> level;
+			lightrightstep[i] = (r_lightptr[i + 3] - lightright[i]) >> level;
+		}
 
 		for (i=0 ; i<size ; i++)
 		{
-			lighttemp = lightleft - lightright;
-			lightstep = lighttemp >> level;
+			int j;
 
-			light = lightright;
-
-			for (b=(size-1); b>=0; b--)
-			{
-				pix = psource[b];
-				prowdest[b] = ((unsigned char *)vid_colormap)
-						[(light & 0xFF00) + pix];
-				light += lightstep;
-			}
+			R_DrawSurfaceBlock_Light(prowdest, psource, size, level, lightleft, lightright);
 
 			psource += sourcetstep;
-			lightright += lightrightstep;
-			lightleft += lightleftstep;
+
+			for(j=0; j<3; j++)
+			{
+				lightright[j] += lightrightstep[j];
+				lightleft[j] += lightleftstep[j];
+			}
+
 			prowdest += surfrowbytes;
 		}
 
@@ -176,7 +252,7 @@ R_DrawSurface (drawsurf_t *drawsurf)
 
 	for (u=0 ; u<r_numhblocks; u++)
 	{
-		r_lightptr = blocklights + u;
+		r_lightptr = blocklights + u * 3;
 
 		if (r_lightptr >= blocklight_max)
 		{
