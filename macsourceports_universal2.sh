@@ -18,18 +18,16 @@ x86_64_CFLAGS="-mmacosx-version-min=10.9"
 x86_64_LDFLAGS="-mmacosx-version-min=10.9"
 
 (YQ2_ARCH=x86_64 make clean) || exit 1;
-(YQ2_ARCH=arm64 make clean) || exit 1;
 (YQ2_ARCH=x86_64 CFLAGS=$x86_64_CFLAGS  LDFLAGS=$x86_64_LDFLAGS make -j$NCPU) || exit 1;
-(YQ2_ARCH=arm64 CFLAGS=$ARM64_CFLAGS  LDFLAGS=$ARM64_LDFLAGS make -j$NCPU) || exit 1;
-
-#move stuff so the scripts can find it
-
 mkdir -p ${X86_64_BUILD_FOLDER}/${EXECUTABLE_FOLDER_PATH}
-mv release-x86_64/* ${X86_64_BUILD_FOLDER}/${EXECUTABLE_FOLDER_PATH}
-rm -rd release-x86_64
+mv release/* ${X86_64_BUILD_FOLDER}/${EXECUTABLE_FOLDER_PATH}
+rm -rd release
+
+(YQ2_ARCH=arm64 make clean) || exit 1;
+(YQ2_ARCH=arm64 CFLAGS=$ARM64_CFLAGS  LDFLAGS=$ARM64_LDFLAGS make -j$NCPU) || exit 1;
 mkdir -p ${ARM64_BUILD_FOLDER}/${EXECUTABLE_FOLDER_PATH}
-mv release-arm64/* ${ARM64_BUILD_FOLDER}/${EXECUTABLE_FOLDER_PATH}
-rm -rd release-arm64
+mv release/* ${ARM64_BUILD_FOLDER}/${EXECUTABLE_FOLDER_PATH}
+rm -rd release
 
 # create the app bundle
 "../MSPScripts/build_app_bundle.sh"

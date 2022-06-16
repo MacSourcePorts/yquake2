@@ -409,9 +409,9 @@ config:
 # Special target to compile the icon on Windows
 ifeq ($(YQ2_OSTYPE), Windows)
 icon:
-	@echo "===> WR build-$(YQ2_ARCH)/icon/icon.res"
-	${Q}mkdir -p build-$(YQ2_ARCH)/icon
-	${Q}windres src/backends/windows/icon.rc -O COFF -o build-$(YQ2_ARCH)/icon/icon.res
+	@echo "===> WR build/icon/icon.res"
+	${Q}mkdir -p build/icon
+	${Q}windres src/backends/windows/icon.rc -O COFF -o build/icon/icon.res
 endif
 
 # ----------
@@ -419,7 +419,7 @@ endif
 # Cleanup
 clean:
 	@echo "===> CLEAN"
-	${Q}rm -Rf build release-$(YQ2_ARCH)/*
+	${Q}rm -Rf build release/*
 
 cleanall:
 	@echo "===> CLEAN"
@@ -432,23 +432,23 @@ ifeq ($(YQ2_OSTYPE), Windows)
 client:
 	@echo "===> Building yquake2.exe"
 	${Q}mkdir -p release
-	$(MAKE) release-$(YQ2_ARCH)/yquake2.exe
+	$(MAKE) release/yquake2.exe
 	@echo "===> Building quake2.exe Wrapper"
-	$(MAKE) release-$(YQ2_ARCH)/quake2.exe
+	$(MAKE) release/quake2.exe
 
-build-$(YQ2_ARCH)/client/%.o: %.c
+build/client/%.o: %.c
 	@echo "===> CC $<"
 	${Q}mkdir -p $(@D)
 	${Q}$(CC) -c $(CFLAGS) $(SDLCFLAGS) $(ZIPCFLAGS) $(INCLUDE) -o $@ $<
 
-release-$(YQ2_ARCH)/yquake2.exe : LDFLAGS += -mwindows
+release/yquake2.exe : LDFLAGS += -mwindows
 
 ifeq ($(WITH_CURL),yes)
-release-$(YQ2_ARCH)/yquake2.exe : CFLAGS += -DUSE_CURL
+release/yquake2.exe : CFLAGS += -DUSE_CURL
 endif
 
 ifeq ($(WITH_OPENAL),yes)
-release-$(YQ2_ARCH)/yquake2.exe : CFLAGS += -DUSE_OPENAL -DDEFAULT_OPENAL_DRIVER='"openal32.dll"'
+release/yquake2.exe : CFLAGS += -DUSE_OPENAL -DDEFAULT_OPENAL_DRIVER='"openal32.dll"'
 endif
 
 else # not Windows
@@ -456,74 +456,74 @@ else # not Windows
 client:
 	@echo "===> Building quake2"
 	${Q}mkdir -p release
-	$(MAKE) release-$(YQ2_ARCH)/quake2
+	$(MAKE) release/quake2
 
 ifeq ($(YQ2_OSTYPE), Darwin)
-build-$(YQ2_ARCH)/client/%.o : %.c
+build/client/%.o : %.c
 	@echo "===> CC $<"
 	${Q}mkdir -p $(@D)
 	${Q}$(CC) -arch $(YQ2_ARCH) -x objective-c -c $(CFLAGS) $(SDLCFLAGS) $(ZIPCFLAGS) $(INCLUDE)  $< -o $@
 else
-build-$(YQ2_ARCH)/client/%.o: %.c
+build/client/%.o: %.c
 	@echo "===> CC $<"
 	${Q}mkdir -p $(@D)
 	${Q}$(CC) -c $(CFLAGS) $(SDLCFLAGS) $(ZIPCFLAGS) $(INCLUDE) -o $@ $<
 endif
 
-release-$(YQ2_ARCH)/quake2 : CFLAGS += -Wno-unused-result
+release/quake2 : CFLAGS += -Wno-unused-result
 
 ifeq ($(WITH_CURL),yes)
-release-$(YQ2_ARCH)/quake2 : CFLAGS += -DUSE_CURL
+release/quake2 : CFLAGS += -DUSE_CURL
 endif
 
 ifeq ($(WITH_OPENAL),yes)
 ifeq ($(YQ2_OSTYPE), OpenBSD)
-release-$(YQ2_ARCH)/quake2 : CFLAGS += -DUSE_OPENAL -DDEFAULT_OPENAL_DRIVER='"libopenal.so"'
+release/quake2 : CFLAGS += -DUSE_OPENAL -DDEFAULT_OPENAL_DRIVER='"libopenal.so"'
 else ifeq ($(YQ2_OSTYPE), Darwin)
-release-$(YQ2_ARCH)/quake2 : CFLAGS += -DUSE_OPENAL -DDEFAULT_OPENAL_DRIVER='"libopenal.dylib"' -I/usr/local/opt/openal-soft/include
-release-$(YQ2_ARCH)/quake2 : LDFLAGS += -L/usr/local/opt/openal-soft/lib -rpath /usr/local/opt/openal-soft/lib
+release/quake2 : CFLAGS += -DUSE_OPENAL -DDEFAULT_OPENAL_DRIVER='"libopenal.dylib"' -I/usr/local/opt/openal-soft/include
+release/quake2 : LDFLAGS += -L/usr/local/opt/openal-soft/lib -rpath /usr/local/opt/openal-soft/lib
 else
-release-$(YQ2_ARCH)/quake2 : CFLAGS += -DUSE_OPENAL -DDEFAULT_OPENAL_DRIVER='"libopenal.so.1"'
+release/quake2 : CFLAGS += -DUSE_OPENAL -DDEFAULT_OPENAL_DRIVER='"libopenal.so.1"'
 endif
 endif
 
 ifeq ($(YQ2_OSTYPE), Linux)
-release-$(YQ2_ARCH)/quake2 : CFLAGS += -DHAVE_EXECINFO
+release/quake2 : CFLAGS += -DHAVE_EXECINFO
 endif
 
 ifeq ($(YQ2_OSTYPE), Darwin)
-release-$(YQ2_ARCH)/quake2 : CFLAGS += -DHAVE_EXECINFO
+release/quake2 : CFLAGS += -DHAVE_EXECINFO
 endif
 
 ifeq ($(YQ2_OSTYPE), SunOS)
-release-$(YQ2_ARCH)/quake2 : CFLAGS += -DHAVE_EXECINFO
+release/quake2 : CFLAGS += -DHAVE_EXECINFO
 endif
 
 ifeq ($(YQ2_OSTYPE), FreeBSD)
-release-$(YQ2_ARCH)/quake2 : CFLAGS += -DHAVE_EXECINFO
-release-$(YQ2_ARCH)/quake2 : LDLIBS += -lexecinfo
+release/quake2 : CFLAGS += -DHAVE_EXECINFO
+release/quake2 : LDLIBS += -lexecinfo
 endif
 
 ifeq ($(YQ2_OSTYPE), NetBSD)
-release-$(YQ2_ARCH)/quake2 : CFLAGS += -DHAVE_EXECINFO
-release-$(YQ2_ARCH)/quake2 : LDLIBS += -lexecinfo
+release/quake2 : CFLAGS += -DHAVE_EXECINFO
+release/quake2 : LDLIBS += -lexecinfo
 endif
 
 ifeq ($(YQ2_OSTYPE), OpenBSD)
-release-$(YQ2_ARCH)/quake2 : CFLAGS += -DHAVE_EXECINFO
-release-$(YQ2_ARCH)/quake2 : LDLIBS += -lexecinfo
+release/quake2 : CFLAGS += -DHAVE_EXECINFO
+release/quake2 : LDLIBS += -lexecinfo
 endif
 
 ifeq ($(YQ2_OSTYPE), Haiku)
-release-$(YQ2_ARCH)/quake2 : CFLAGS += -DHAVE_EXECINFO
-release-$(YQ2_ARCH)/quake2 : LDLIBS += -lexecinfo
+release/quake2 : CFLAGS += -DHAVE_EXECINFO
+release/quake2 : LDLIBS += -lexecinfo
 endif
 
 ifeq ($(WITH_RPATH),yes)
 ifeq ($(YQ2_OSTYPE), Darwin)
-release-$(YQ2_ARCH)/quake2 : LDFLAGS += -Wl,-rpath,'@executable_path/lib'
+release/quake2 : LDFLAGS += -Wl,-rpath,'@executable_path/lib'
 else
-release-$(YQ2_ARCH)/quake2 : LDFLAGS += -Wl,-z,origin,-rpath='$$ORIGIN/lib'
+release/quake2 : LDFLAGS += -Wl,-z,origin,-rpath='$$ORIGIN/lib'
 endif
 endif
 endif
@@ -535,31 +535,31 @@ ifeq ($(YQ2_OSTYPE), Windows)
 server:
 	@echo "===> Building q2ded"
 	${Q}mkdir -p release
-	$(MAKE) release-$(YQ2_ARCH)/q2ded.exe
+	$(MAKE) release/q2ded.exe
 
-build-$(YQ2_ARCH)/server/%.o: %.c
+build/server/%.o: %.c
 	@echo "===> CC $<"
 	${Q}mkdir -p $(@D)
 	${Q}$(CC) -c $(CFLAGS) $(ZIPCFLAGS) $(INCLUDE) -o $@ $<
 
-release-$(YQ2_ARCH)/q2ded.exe : CFLAGS += -DDEDICATED_ONLY
+release/q2ded.exe : CFLAGS += -DDEDICATED_ONLY
 
 else # not Windows
 
 server:
 	@echo "===> Building q2ded"
 	${Q}mkdir -p release
-	$(MAKE) release-$(YQ2_ARCH)/q2ded
+	$(MAKE) release/q2ded
 
-build-$(YQ2_ARCH)/server/%.o: %.c
+build/server/%.o: %.c
 	@echo "===> CC $<"
 	${Q}mkdir -p $(@D)
 	${Q}$(CC) -c $(CFLAGS) $(ZIPCFLAGS) $(INCLUDE) -o $@ $<
 
-release-$(YQ2_ARCH)/q2ded : CFLAGS += -DDEDICATED_ONLY -Wno-unused-result
+release/q2ded : CFLAGS += -DDEDICATED_ONLY -Wno-unused-result
 
 ifeq ($(YQ2_OSTYPE), FreeBSD)
-release-$(YQ2_ARCH)/q2ded : LDLIBS += -lexecinfo
+release/q2ded : LDLIBS += -lexecinfo
 endif
 endif
 
@@ -571,34 +571,34 @@ ifeq ($(YQ2_OSTYPE), Windows)
 
 ref_gl1:
 	@echo "===> Building ref_gl1.dll"
-	$(MAKE) release-$(YQ2_ARCH)/ref_gl1.dll
+	$(MAKE) release/ref_gl1.dll
 
-release-$(YQ2_ARCH)/ref_gl1.dll : LDFLAGS += -shared
-release-$(YQ2_ARCH)/ref_gl1.dll : LDLIBS += -lopengl32
+release/ref_gl1.dll : LDFLAGS += -shared
+release/ref_gl1.dll : LDLIBS += -lopengl32
 
 else ifeq ($(YQ2_OSTYPE), Darwin)
 
 ref_gl1:
 	@echo "===> Building ref_gl1.dylib"
-	$(MAKE) release-$(YQ2_ARCH)/ref_gl1.dylib
+	$(MAKE) release/ref_gl1.dylib
 
 
-release-$(YQ2_ARCH)/ref_gl1.dylib : LDFLAGS += -shared -framework OpenGL
+release/ref_gl1.dylib : LDFLAGS += -shared -framework OpenGL
 
 else # not Windows or Darwin
 
 ref_gl1:
 	@echo "===> Building ref_gl1.so"
-	$(MAKE) release-$(YQ2_ARCH)/ref_gl1.so
+	$(MAKE) release/ref_gl1.so
 
 
-release-$(YQ2_ARCH)/ref_gl1.so : CFLAGS += -fPIC
-release-$(YQ2_ARCH)/ref_gl1.so : LDFLAGS += -shared
-release-$(YQ2_ARCH)/ref_gl1.so : LDLIBS += -lGL
+release/ref_gl1.so : CFLAGS += -fPIC
+release/ref_gl1.so : LDFLAGS += -shared
+release/ref_gl1.so : LDLIBS += -lGL
 
 endif # OS specific ref_gl1 stuff
 
-build-$(YQ2_ARCH)/ref_gl1/%.o: %.c
+build/ref_gl1/%.o: %.c
 	@echo "===> CC $<"
 	${Q}mkdir -p $(@D)
 	${Q}$(CC) -c $(CFLAGS) $(SDLCFLAGS) $(INCLUDE) -o $@ $<
@@ -611,33 +611,33 @@ ifeq ($(YQ2_OSTYPE), Windows)
 
 ref_gl3:
 	@echo "===> Building ref_gl3.dll"
-	$(MAKE) release-$(YQ2_ARCH)/ref_gl3.dll
+	$(MAKE) release/ref_gl3.dll
 
-release-$(YQ2_ARCH)/ref_gl3.dll : GLAD_INCLUDE = -Isrc/client/refresh/gl3/glad/include
-release-$(YQ2_ARCH)/ref_gl3.dll : LDFLAGS += -shared
+release/ref_gl3.dll : GLAD_INCLUDE = -Isrc/client/refresh/gl3/glad/include
+release/ref_gl3.dll : LDFLAGS += -shared
 
 else ifeq ($(YQ2_OSTYPE), Darwin)
 
 ref_gl3:
 	@echo "===> Building ref_gl3.dylib"
-	$(MAKE) release-$(YQ2_ARCH)/ref_gl3.dylib
+	$(MAKE) release/ref_gl3.dylib
 
-release-$(YQ2_ARCH)/ref_gl3.dylib : GLAD_INCLUDE = -Isrc/client/refresh/gl3/glad/include
-release-$(YQ2_ARCH)/ref_gl3.dylib : LDFLAGS += -shared
+release/ref_gl3.dylib : GLAD_INCLUDE = -Isrc/client/refresh/gl3/glad/include
+release/ref_gl3.dylib : LDFLAGS += -shared
 
 else # not Windows or Darwin
 
 ref_gl3:
 	@echo "===> Building ref_gl3.so"
-	$(MAKE) release-$(YQ2_ARCH)/ref_gl3.so
+	$(MAKE) release/ref_gl3.so
 
-release-$(YQ2_ARCH)/ref_gl3.so : GLAD_INCLUDE = -Isrc/client/refresh/gl3/glad/include
-release-$(YQ2_ARCH)/ref_gl3.so : CFLAGS += -fPIC
-release-$(YQ2_ARCH)/ref_gl3.so : LDFLAGS += -shared
+release/ref_gl3.so : GLAD_INCLUDE = -Isrc/client/refresh/gl3/glad/include
+release/ref_gl3.so : CFLAGS += -fPIC
+release/ref_gl3.so : LDFLAGS += -shared
 
 endif # OS specific ref_gl3 stuff
 
-build-$(YQ2_ARCH)/ref_gl3/%.o: %.c
+build/ref_gl3/%.o: %.c
 	@echo "===> CC $<"
 	${Q}mkdir -p $(@D)
 	${Q}$(CC) -c $(CFLAGS) $(SDLCFLAGS) $(INCLUDE) $(GLAD_INCLUDE) -o $@ $<
@@ -705,30 +705,30 @@ ifeq ($(YQ2_OSTYPE), Windows)
 
 ref_soft:
 	@echo "===> Building ref_soft.dll"
-	$(MAKE) release-$(YQ2_ARCH)/ref_soft.dll
+	$(MAKE) release/ref_soft.dll
 
-release-$(YQ2_ARCH)/ref_soft.dll : LDFLAGS += -shared
+release/ref_soft.dll : LDFLAGS += -shared
 
 else ifeq ($(YQ2_OSTYPE), Darwin)
 
 ref_soft:
 	@echo "===> Building ref_soft.dylib"
-	$(MAKE) release-$(YQ2_ARCH)/ref_soft.dylib
+	$(MAKE) release/ref_soft.dylib
 
-release-$(YQ2_ARCH)/ref_soft.dylib : LDFLAGS += -shared
+release/ref_soft.dylib : LDFLAGS += -shared
 
 else # not Windows or Darwin
 
 ref_soft:
 	@echo "===> Building ref_soft.so"
-	$(MAKE) release-$(YQ2_ARCH)/ref_soft.so
+	$(MAKE) release/ref_soft.so
 
-release-$(YQ2_ARCH)/ref_soft.so : CFLAGS += -fPIC
-release-$(YQ2_ARCH)/ref_soft.so : LDFLAGS += -shared
+release/ref_soft.so : CFLAGS += -fPIC
+release/ref_soft.so : LDFLAGS += -shared
 
 endif # OS specific ref_soft stuff
 
-build-$(YQ2_ARCH)/ref_soft/%.o: %.c
+build/ref_soft/%.o: %.c
 	@echo "===> CC $<"
 	${Q}mkdir -p $(@D)
 	${Q}$(CC) -c $(CFLAGS) $(SDLCFLAGS) $(INCLUDE) -o $@ $<
@@ -739,45 +739,45 @@ build-$(YQ2_ARCH)/ref_soft/%.o: %.c
 ifeq ($(YQ2_OSTYPE), Windows)
 game:
 	@echo "===> Building baseq2/game.dll"
-	${Q}mkdir -p release-$(YQ2_ARCH)/baseq2
-	$(MAKE) release-$(YQ2_ARCH)/baseq2/game.dll
+	${Q}mkdir -p release/baseq2
+	$(MAKE) release/baseq2/game.dll
 
-build-$(YQ2_ARCH)/baseq2/%.o: %.c
+build/baseq2/%.o: %.c
 	@echo "===> CC $<"
 	${Q}mkdir -p $(@D)
 	${Q}$(CC) -c $(CFLAGS) $(INCLUDE) -o $@ $<
 
-release-$(YQ2_ARCH)/baseq2/game.dll : LDFLAGS += -shared
+release/baseq2/game.dll : LDFLAGS += -shared
 
 else ifeq ($(YQ2_OSTYPE), Darwin)
 
 game:
 	@echo "===> Building baseq2/game.dylib"
-	${Q}mkdir -p release-$(YQ2_ARCH)/baseq2
-	$(MAKE) release-$(YQ2_ARCH)/baseq2/game.dylib
+	${Q}mkdir -p release/baseq2
+	$(MAKE) release/baseq2/game.dylib
 
-build-$(YQ2_ARCH)/baseq2/%.o: %.c
+build/baseq2/%.o: %.c
 	@echo "===> CC $<"
 	${Q}mkdir -p $(@D)
 	${Q}$(CC) -c $(CFLAGS) $(INCLUDE) -o $@ $<
 
-release-$(YQ2_ARCH)/baseq2/game.dylib : CFLAGS += -fPIC
-release-$(YQ2_ARCH)/baseq2/game.dylib : LDFLAGS += -shared
+release/baseq2/game.dylib : CFLAGS += -fPIC
+release/baseq2/game.dylib : LDFLAGS += -shared
 
 else # not Windows or Darwin
 
 game:
 	@echo "===> Building baseq2/game.so"
-	${Q}mkdir -p release-$(YQ2_ARCH)/baseq2
-	$(MAKE) release-$(YQ2_ARCH)/baseq2/game.so
+	${Q}mkdir -p release/baseq2
+	$(MAKE) release/baseq2/game.so
 
-build-$(YQ2_ARCH)/baseq2/%.o: %.c
+build/baseq2/%.o: %.c
 	@echo "===> CC $<"
 	${Q}mkdir -p $(@D)
 	${Q}$(CC) -c $(CFLAGS) $(INCLUDE) -o $@ $<
 
-release-$(YQ2_ARCH)/baseq2/game.so : CFLAGS += -fPIC -Wno-unused-result
-release-$(YQ2_ARCH)/baseq2/game.so : LDFLAGS += -shared
+release/baseq2/game.so : CFLAGS += -fPIC -Wno-unused-result
+release/baseq2/game.so : LDFLAGS += -shared
 endif
 
 # ----------
@@ -1076,15 +1076,15 @@ endif
 # ----------
 
 # Rewrite pathes to our object directory.
-CLIENT_OBJS = $(patsubst %,build-$(YQ2_ARCH)/client/%,$(CLIENT_OBJS_))
-REFGL1_OBJS = $(patsubst %,build-$(YQ2_ARCH)/ref_gl1/%,$(REFGL1_OBJS_))
-REFGL3_OBJS = $(patsubst %,build-$(YQ2_ARCH)/ref_gl3/%,$(REFGL3_OBJS_))
-REFGL3_OBJS += $(patsubst %,build-$(YQ2_ARCH)/ref_gl3/%,$(REFGL3_OBJS_GLADE_))
-REFGLES3_OBJS = $(patsubst %,build-$(YQ2_ARCH)/ref_gles3/%,$(REFGL3_OBJS_))
-REFGLES3_OBJS += $(patsubst %,build-$(YQ2_ARCH)/ref_gles3/%,$(REFGL3_OBJS_GLADEES_))
-REFSOFT_OBJS = $(patsubst %,build-$(YQ2_ARCH)/ref_soft/%,$(REFSOFT_OBJS_))
-SERVER_OBJS = $(patsubst %,build-$(YQ2_ARCH)/server/%,$(SERVER_OBJS_))
-GAME_OBJS = $(patsubst %,build-$(YQ2_ARCH)/baseq2/%,$(GAME_OBJS_))
+CLIENT_OBJS = $(patsubst %,build/client/%,$(CLIENT_OBJS_))
+REFGL1_OBJS = $(patsubst %,build/ref_gl1/%,$(REFGL1_OBJS_))
+REFGL3_OBJS = $(patsubst %,build/ref_gl3/%,$(REFGL3_OBJS_))
+REFGL3_OBJS += $(patsubst %,build/ref_gl3/%,$(REFGL3_OBJS_GLADE_))
+REFGLES3_OBJS = $(patsubst %,build/ref_gles3/%,$(REFGL3_OBJS_))
+REFGLES3_OBJS += $(patsubst %,build/ref_gles3/%,$(REFGL3_OBJS_GLADEES_))
+REFSOFT_OBJS = $(patsubst %,build/ref_soft/%,$(REFSOFT_OBJS_))
+SERVER_OBJS = $(patsubst %,build/server/%,$(SERVER_OBJS_))
+GAME_OBJS = $(patsubst %,build/baseq2/%,$(GAME_OBJS_))
 
 # ----------
 
@@ -1107,109 +1107,109 @@ SERVER_DEPS= $(SERVER_OBJS:.o=.d)
 
 # ----------
 
-# release-$(YQ2_ARCH)/quake2
+# release/quake2
 ifeq ($(YQ2_OSTYPE), Windows)
-release-$(YQ2_ARCH)/yquake2.exe : $(CLIENT_OBJS) icon
+release/yquake2.exe : $(CLIENT_OBJS) icon
 	@echo "===> LD $@"
-	${Q}$(CC) $(LDFLAGS) build-$(YQ2_ARCH)/icon/icon.res $(CLIENT_OBJS) $(LDLIBS) $(SDLLDFLAGS) -o $@
+	${Q}$(CC) $(LDFLAGS) build/icon/icon.res $(CLIENT_OBJS) $(LDLIBS) $(SDLLDFLAGS) -o $@
 	$(Q)strip $@
-release-$(YQ2_ARCH)/quake2.exe : src/win-wrapper/wrapper.c icon
-	$(Q)$(CC) -Wall -mwindows build-$(YQ2_ARCH)/icon/icon.res src/win-wrapper/wrapper.c -o $@
+release/quake2.exe : src/win-wrapper/wrapper.c icon
+	$(Q)$(CC) -Wall -mwindows build/icon/icon.res src/win-wrapper/wrapper.c -o $@
 	$(Q)strip $@
 else
-release-$(YQ2_ARCH)/quake2 : $(CLIENT_OBJS)
+release/quake2 : $(CLIENT_OBJS)
 	@echo "===> LD $@"
 	${Q}$(CC) $(LDFLAGS) $(CLIENT_OBJS) $(LDLIBS) $(SDLLDFLAGS) -o $@
 endif
 
-# release-$(YQ2_ARCH)/q2ded
+# release/q2ded
 ifeq ($(YQ2_OSTYPE), Windows)
-release-$(YQ2_ARCH)/q2ded.exe : $(SERVER_OBJS) icon
+release/q2ded.exe : $(SERVER_OBJS) icon
 	@echo "===> LD $@"
-	${Q}$(CC) $(LDFLAGS) build-$(YQ2_ARCH)/icon/icon.res $(SERVER_OBJS) $(LDLIBS) $(SDLLDFLAGS) -o $@
+	${Q}$(CC) $(LDFLAGS) build/icon/icon.res $(SERVER_OBJS) $(LDLIBS) $(SDLLDFLAGS) -o $@
 	$(Q)strip $@
 else
-release-$(YQ2_ARCH)/q2ded : $(SERVER_OBJS)
+release/q2ded : $(SERVER_OBJS)
 	@echo "===> LD $@"
 	${Q}$(CC) $(LDFLAGS) $(SERVER_OBJS) $(LDLIBS) -o $@
 endif
 
-# release-$(YQ2_ARCH)/ref_gl1.so
+# release/ref_gl1.so
 ifeq ($(YQ2_OSTYPE), Windows)
-release-$(YQ2_ARCH)/ref_gl1.dll : $(REFGL1_OBJS)
+release/ref_gl1.dll : $(REFGL1_OBJS)
 	@echo "===> LD $@"
 	${Q}$(CC) $(LDFLAGS) $(REFGL1_OBJS) $(LDLIBS) $(DLL_SDLLDFLAGS) -o $@
 	$(Q)strip $@
 else ifeq ($(YQ2_OSTYPE), Darwin)
-release-$(YQ2_ARCH)/ref_gl1.dylib : $(REFGL1_OBJS)
+release/ref_gl1.dylib : $(REFGL1_OBJS)
 	@echo "===> LD $@"
 	${Q}$(CC) $(LDFLAGS) $(REFGL1_OBJS) $(LDLIBS) $(SDLLDFLAGS) -o $@
 else
-release-$(YQ2_ARCH)/ref_gl1.so : $(REFGL1_OBJS)
+release/ref_gl1.so : $(REFGL1_OBJS)
 	@echo "===> LD $@"
 	${Q}$(CC) $(LDFLAGS) $(REFGL1_OBJS) $(LDLIBS) $(SDLLDFLAGS) -o $@
 endif
 
-# release-$(YQ2_ARCH)/ref_gl3.so
+# release/ref_gl3.so
 ifeq ($(YQ2_OSTYPE), Windows)
-release-$(YQ2_ARCH)/ref_gl3.dll : $(REFGL3_OBJS)
+release/ref_gl3.dll : $(REFGL3_OBJS)
 	@echo "===> LD $@"
 	${Q}$(CC) $(LDFLAGS) $(REFGL3_OBJS) $(LDLIBS) $(DLL_SDLLDFLAGS) -o $@
 	$(Q)strip $@
 else ifeq ($(YQ2_OSTYPE), Darwin)
-release-$(YQ2_ARCH)/ref_gl3.dylib : $(REFGL3_OBJS)
+release/ref_gl3.dylib : $(REFGL3_OBJS)
 	@echo "===> LD $@"
 	${Q}$(CC) $(LDFLAGS) $(REFGL3_OBJS) $(LDLIBS) $(SDLLDFLAGS) -o $@
 else
-release-$(YQ2_ARCH)/ref_gl3.so : $(REFGL3_OBJS)
+release/ref_gl3.so : $(REFGL3_OBJS)
 	@echo "===> LD $@"
 	${Q}$(CC) $(LDFLAGS) $(REFGL3_OBJS) $(LDLIBS) $(SDLLDFLAGS) -o $@
 endif
 
 # release/ref_gles3.so
 ifeq ($(YQ2_OSTYPE), Windows)
-release-$(YQ2_ARCH)/ref_gles3.dll : $(REFGLES3_OBJS)
+release/ref_gles3.dll : $(REFGLES3_OBJS)
 	@echo "===> LD $@"
 	${Q}$(CC) $(LDFLAGS) $(REFGLES3_OBJS) $(LDLIBS) $(DLL_SDLLDFLAGS) -o $@
 	$(Q)strip $@
 else ifeq ($(YQ2_OSTYPE), Darwin)
-release-$(YQ2_ARCH)/ref_gles3.dylib : $(REFGLES3_OBJS)
+release/ref_gles3.dylib : $(REFGLES3_OBJS)
 	@echo "===> LD $@"
 	${Q}$(CC) $(LDFLAGS) $(REFGLES3_OBJS) $(LDLIBS) $(SDLLDFLAGS) -o $@
 else
-release-$(YQ2_ARCH)/ref_gles3.so : $(REFGLES3_OBJS)
+release/ref_gles3.so : $(REFGLES3_OBJS)
 	@echo "===> LD $@"
 	${Q}$(CC) $(LDFLAGS) $(REFGLES3_OBJS) $(LDLIBS) $(SDLLDFLAGS) -o $@
 endif
 
 # release/ref_soft.so
 ifeq ($(YQ2_OSTYPE), Windows)
-release-$(YQ2_ARCH)/ref_soft.dll : $(REFSOFT_OBJS)
+release/ref_soft.dll : $(REFSOFT_OBJS)
 	@echo "===> LD $@"
 	${Q}$(CC) $(LDFLAGS) $(REFSOFT_OBJS) $(LDLIBS) $(DLL_SDLLDFLAGS) -o $@
 	$(Q)strip $@
 else ifeq ($(YQ2_OSTYPE), Darwin)
-release-$(YQ2_ARCH)/ref_soft.dylib : $(REFSOFT_OBJS)
+release/ref_soft.dylib : $(REFSOFT_OBJS)
 	@echo "===> LD $@"
 	${Q}$(CC) $(LDFLAGS) $(REFSOFT_OBJS) $(LDLIBS) $(SDLLDFLAGS) -o $@
 else
-release-$(YQ2_ARCH)/ref_soft.so : $(REFSOFT_OBJS)
+release/ref_soft.so : $(REFSOFT_OBJS)
 	@echo "===> LD $@"
 	${Q}$(CC) $(LDFLAGS) $(REFSOFT_OBJS) $(LDLIBS) $(SDLLDFLAGS) -o $@
 endif
 
-# release-$(YQ2_ARCH)/baseq2/game.so
+# release/baseq2/game.so
 ifeq ($(YQ2_OSTYPE), Windows)
-release-$(YQ2_ARCH)/baseq2/game.dll : $(GAME_OBJS)
+release/baseq2/game.dll : $(GAME_OBJS)
 	@echo "===> LD $@"
 	${Q}$(CC) $(LDFLAGS) $(GAME_OBJS) $(LDLIBS) -o $@
 	$(Q)strip $@
 else ifeq ($(YQ2_OSTYPE), Darwin)
-release-$(YQ2_ARCH)/baseq2/game.dylib : $(GAME_OBJS)
+release/baseq2/game.dylib : $(GAME_OBJS)
 	@echo "===> LD $@"
 	${Q}$(CC) $(LDFLAGS) $(GAME_OBJS) $(LDLIBS) -o $@
 else
-release-$(YQ2_ARCH)/baseq2/game.so : $(GAME_OBJS)
+release/baseq2/game.so : $(GAME_OBJS)
 	@echo "===> LD $@"
 	${Q}$(CC) $(LDFLAGS) $(GAME_OBJS) $(LDLIBS) -o $@
 endif
