@@ -27,18 +27,31 @@
 #ifndef CL_MENU_QMENU_H
 #define CL_MENU_QMENU_H
 
+#define RCOLUMN_OFFSET  16
+#define LCOLUMN_OFFSET -16
+
 #define MAXMENUITEMS 64
 
-#define MTYPE_SLIDER 0
-#define MTYPE_LIST 1
-#define MTYPE_ACTION 2
-#define MTYPE_SPINCONTROL 3
-#define MTYPE_SEPARATOR 4
-#define MTYPE_FIELD 5
+#define MTYPE_SLIDER        0
+#define MTYPE_LIST          1
+#define MTYPE_ACTION        2
+#define MTYPE_SPINCONTROL   3
+#define MTYPE_SEPARATOR     4
+#define MTYPE_FIELD         5
+#define MTYPE_BITMAP        6
 
-#define QMF_LEFT_JUSTIFY 0x00000001
-#define QMF_GRAYED 0x00000002
-#define QMF_NUMBERSONLY 0x00000004
+#define QMF_LEFT_JUSTIFY        0x00000001
+#define QMF_GRAYED              0x00000002
+#define QMF_NUMBERSONLY         0x00000004
+#define QMF_HIGHLIGHT_IF_FOCUS  0x00000008
+#define QMF_INACTIVE            0x00000010
+
+enum {
+	KEYS_ALL	= 0,
+	KEYS_KEYBOARD_MOUSE,
+	KEYS_CONTROLLER,
+	KEYS_CONTROLLER_ALT
+};
 
 typedef struct _tag_menuframework
 {
@@ -71,6 +84,15 @@ typedef struct
 	void (*ownerdraw)(void *self);
 	void (*cursordraw)(void *self);
 } menucommon_s;
+
+typedef struct
+{
+	menucommon_s    generic;
+	char *          focuspic;	
+	char *          errorpic;
+	int             width;
+	int             height;
+} menubitmap_s;
 
 typedef struct
 {

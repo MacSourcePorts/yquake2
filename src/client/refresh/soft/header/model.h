@@ -95,7 +95,7 @@ typedef struct msurface_s
 
 	// lighting info
 	byte		styles[MAXLIGHTMAPS];
-	byte		*samples;	// [numstyles*surfsize]
+	byte		*samples;	// [numstyles*surfsize*3]
 
 	struct msurface_s *nextalphasurface;
 } msurface_t;
@@ -222,8 +222,7 @@ typedef struct model_s
 
 void	Mod_Init(void);
 
-mleaf_t *Mod_PointInLeaf(vec3_t p, model_t *model);
-byte	*Mod_ClusterPVS(int cluster, model_t *model);
+const byte *Mod_ClusterPVS(int cluster, const model_t *model);
 
 void Mod_Modellist_f(void);
 void Mod_FreeAll(void);

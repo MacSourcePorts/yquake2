@@ -135,7 +135,7 @@ CreateSDLWindow(int flags, int w, int h)
 			Com_Printf("Likely SDL bug #4700, trying to work around it\n");
 
 			/* Mkay, try to hack around that. */
-			SDL_DisplayMode wanted_mode = {};
+			SDL_DisplayMode wanted_mode = {0};
 
 			wanted_mode.w = w;
 			wanted_mode.h = h;
@@ -217,6 +217,7 @@ CreateSDLWindow(int flags, int w, int h)
 	}
 	else
 	{
+		Com_Printf("Creating window failed: %s\n", SDL_GetError());
 		return false;
 	}
 
@@ -541,16 +542,26 @@ GLimp_InitGraphics(int fullscreen, int *pwidth, int *pheight)
 		{
 			if((flags & SDL_WINDOW_OPENGL) && gl_msaa_samples->value)
 			{
+				int msaa_samples = gl_msaa_samples->value;
+
+				if (msaa_samples > 0)
+				{
+					msaa_samples /= 2;
+				}
+
 				Com_Printf("SDL SetVideoMode failed: %s\n", SDL_GetError());
-				Com_Printf("Reverting to %s r_mode %i (%ix%i) without MSAA.\n",
+				Com_Printf("Reverting to %s r_mode %i (%ix%i) with %dx MSAA.\n",
 					        (flags & fs_flag) ? "fullscreen" : "windowed",
-					        (int) Cvar_VariableValue("r_mode"), width, height);
+					        (int) Cvar_VariableValue("r_mode"), width, height,
+					        msaa_samples);
 
 				/* Try to recover */
-				Cvar_SetValue("r_msaa_samples", 0);
+				Cvar_SetValue("r_msaa_samples", msaa_samples);
 
-				SDL_GL_SetAttribute(SDL_GL_MULTISAMPLEBUFFERS, 0);
-				SDL_GL_SetAttribute(SDL_GL_MULTISAMPLESAMPLES, 0);
+				SDL_GL_SetAttribute(SDL_GL_MULTISAMPLEBUFFERS,
+					msaa_samples > 0 ? 1 : 0);
+				SDL_GL_SetAttribute(SDL_GL_MULTISAMPLESAMPLES,
+					msaa_samples);
 			}
 			else if (width != 640 || height != 480 || (flags & fs_flag))
 			{
@@ -569,7 +580,7 @@ GLimp_InitGraphics(int fullscreen, int *pwidth, int *pheight)
 			}
 			else
 			{
-				Com_Error(ERR_FATAL, "Failed to revert to r_mode 4. Exiting...\n");
+				Com_Printf("Failed to revert to r_mode 4. Will try another render backend...\n");
 				return false;
 			}
 		}
@@ -584,7 +595,7 @@ GLimp_InitGraphics(int fullscreen, int *pwidth, int *pheight)
 	/* Now that we've got a working window print it's mode. */
 	int curdisplay = SDL_GetWindowDisplayIndex(window);
 
-    if (curdisplay < 0) {
+	if (curdisplay < 0) {
 		curdisplay = 0;
 	}
 

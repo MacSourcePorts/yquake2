@@ -56,6 +56,7 @@ typedef struct dlhandle_s
 	dlqueue_t *queueEntry;
 	size_t fileSize;
 	size_t position;
+	size_t fileDownloadedSize;
 	char URL[576];
 	char *tempBuffer;
 } dlhandle_t;
@@ -73,6 +74,9 @@ extern cvar_t *cl_http_downloads;
 extern cvar_t *cl_http_filelists;
 extern cvar_t *cl_http_proxy;
 extern cvar_t *cl_http_max_connections;
+extern cvar_t *cl_http_show_dw_progress;
+extern cvar_t *cl_http_bw_limit_rate;
+extern cvar_t *cl_http_bw_limit_tmout;
 
 void CL_CancelHTTPDownloads(qboolean permKill);
 void CL_InitHTTPDownloads(void);

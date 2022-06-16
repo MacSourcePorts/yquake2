@@ -40,6 +40,7 @@ static int	swap_current = 0;
 espan_t		*vid_polygon_spans = NULL;
 pixel_t		*vid_colormap = NULL;
 pixel_t		*vid_alphamap = NULL;
+light_t		vid_lightthreshold = 0;
 static int	vid_minu, vid_minv, vid_maxu, vid_maxv;
 static int	vid_zminu, vid_zminv, vid_zmaxu, vid_zmaxv;
 
@@ -51,9 +52,7 @@ static qboolean	palette_changed;
 
 refimport_t	ri;
 
-static unsigned	d_8to24table[256];
-
-entity_t	r_worldentity;
+byte		d_8to24table[256 * 4];
 
 char		skyname[MAX_QPATH];
 vec3_t		skyaxis;
@@ -136,6 +135,8 @@ float	se_time1, se_time2, de_time1, de_time2;
 cvar_t	*r_lefthand;
 cvar_t	*r_gunfov;
 cvar_t	*r_farsee;
+cvar_t	*r_lightmap;
+cvar_t	*r_colorlight;
 static cvar_t	*sw_aliasstats;
 cvar_t	*sw_clearcolor;
 cvar_t	*sw_drawflat;
@@ -148,7 +149,8 @@ static cvar_t	*sw_overbrightbits;
 cvar_t	*sw_custom_particles;
 static cvar_t	*sw_anisotropic;
 cvar_t	*sw_texture_filtering;
-cvar_t	*sw_retexturing;
+cvar_t	*r_retexturing;
+cvar_t	*r_scale8bittextures;
 cvar_t	*sw_gunzposition;
 static cvar_t	*sw_partialrefresh;
 
@@ -377,7 +379,8 @@ R_RegisterVariables (void)
 	sw_custom_particles = ri.Cvar_Get("sw_custom_particles", "0", CVAR_ARCHIVE);
 	sw_texture_filtering = ri.Cvar_Get("sw_texture_filtering", "0", CVAR_ARCHIVE);
 	sw_anisotropic = ri.Cvar_Get("r_anisotropic", "0", CVAR_ARCHIVE);
-	sw_retexturing = ri.Cvar_Get("r_retexturing", "1", CVAR_ARCHIVE);
+	r_retexturing = ri.Cvar_Get("r_retexturing", "1", CVAR_ARCHIVE);
+	r_scale8bittextures = ri.Cvar_Get("r_scale8bittextures", "0", CVAR_ARCHIVE);
 	sw_gunzposition = ri.Cvar_Get("sw_gunzposition", "8", CVAR_ARCHIVE);
 
 	// On MacOS texture is cleaned up after render and code have to copy a whole
@@ -394,6 +397,8 @@ R_RegisterVariables (void)
 	r_lefthand = ri.Cvar_Get( "hand", "0", CVAR_USERINFO | CVAR_ARCHIVE );
 	r_gunfov = ri.Cvar_Get( "r_gunfov", "80", CVAR_ARCHIVE );
 	r_farsee = ri.Cvar_Get("r_farsee", "0", CVAR_LATCH | CVAR_ARCHIVE);
+	r_lightmap = ri.Cvar_Get("r_lightmap", "0", 0);
+	r_colorlight = ri.Cvar_Get("sw_colorlight", "0", CVAR_ARCHIVE);
 	r_speeds = ri.Cvar_Get ("r_speeds", "0", 0);
 	r_fullbright = ri.Cvar_Get ("r_fullbright", "0", 0);
 	r_drawentities = ri.Cvar_Get ("r_drawentities", "1", 0);
@@ -508,6 +513,7 @@ RE_Shutdown (void)
 		free (vid_colormap);
 		vid_colormap = NULL;
 	}
+
 	R_UnRegister ();
 	Mod_FreeAll ();
 	R_ShutdownImages ();
@@ -744,7 +750,7 @@ cluster
 static void
 R_MarkLeaves (void)
 {
-	byte	*vis;
+	const byte	*vis;
 	mnode_t	*node;
 	int		i;
 	mleaf_t	*leaf;
@@ -1036,8 +1042,8 @@ RotatedBBox (const vec3_t mins, const vec3_t maxs, vec3_t angles, vec3_t tmins, 
 
 	for (i=0 ; i<3 ; i++)
 	{
-		tmins[i] = INT_MAX; // Set maximum values for world range
-		tmaxs[i] = INT_MIN;  // Set minimal values for world range
+		tmins[i] = (vec_t)INT_MAX; // Set maximum values for world range
+		tmaxs[i] = (vec_t)INT_MIN;  // Set minimal values for world range
 	}
 
 	AngleVectors (angles, forward, right, up);
@@ -1163,7 +1169,7 @@ Render the map
 ================
 */
 static void
-R_EdgeDrawing (void)
+R_EdgeDrawing (entity_t *currententity)
 {
 	if ( r_newrefdef.rdflags & RDF_NOWORLDMODEL )
 		return;
@@ -1181,7 +1187,7 @@ R_EdgeDrawing (void)
 
 	// Build the Global Edget Table
 	// Also populate the surface stack and count # surfaces to render (surf_max is the max)
-	R_RenderWorld ();
+	R_RenderWorld (currententity);
 
 	if (r_dspeeds->value)
 	{
@@ -1199,7 +1205,7 @@ R_EdgeDrawing (void)
 
 	// Use the Global Edge Table to maintin the Active Edge Table: Draw the world as scanlines
 	// Write the Z-Buffer (but no read)
-	R_ScanEdges (surface_p);
+	R_ScanEdges (currententity, surface_p);
 }
 
 //=======================================================================
@@ -1228,7 +1234,7 @@ R_CalcPalette (void)
 		if (modified)
 		{	// set back to default
 			modified = false;
-			R_GammaCorrectAndSetPalette( ( const unsigned char * ) d_8to24table );
+			R_GammaCorrectAndSetPalette( d_8to24table );
 			return;
 		}
 		return;
@@ -1244,7 +1250,7 @@ R_CalcPalette (void)
 
 	one_minus_alpha = (1.0 - alpha);
 
-	in = (byte *)d_8to24table;
+	in = d_8to24table;
 	out = palette[0];
 	for (i=0 ; i<256 ; i++, in+=4, out+=4)
 	{
@@ -1280,7 +1286,7 @@ R_SetLightLevel (const entity_t *currententity)
 }
 
 static int
-VectorCompareRound(vec3_t v1, vec3_t v2)
+VectorCompareRound(const vec3_t v1, const vec3_t v2)
 {
 	if ((int)(v1[0] - v2[0]) || (int)(v1[1] - v2[1]) || (int)(v1[2] - v2[2]))
 	{
@@ -1300,6 +1306,7 @@ static void
 RE_RenderFrame (refdef_t *fd)
 {
 	r_newrefdef = *fd;
+	entity_t	ent;
 
 	if (!r_worldmodel && !( r_newrefdef.rdflags & RDF_NOWORLDMODEL ) )
 	{
@@ -1340,9 +1347,14 @@ RE_RenderFrame (refdef_t *fd)
 	// For each dlight_t* passed via r_newrefdef.dlights, mark polygons affected by a light.
 	R_PushDlights (r_worldmodel);
 
+	// TODO: rearrange code same as in GL*_DrawWorld?
+	/* auto cycle the world frame for texture animation */
+	memset(&ent, 0, sizeof(ent));
+	ent.frame = (int)(r_newrefdef.time * 2);
+
 	// Build the Global Edge Table and render it via the Active Edge Table
 	// Render the map
-	R_EdgeDrawing ();
+	R_EdgeDrawing (&ent);
 
 	if (r_dspeeds->value)
 	{
@@ -1377,10 +1389,10 @@ RE_RenderFrame (refdef_t *fd)
 		dp_time2 = SDL_GetTicks();
 
 	// Perform pixel palette blending ia the pics/colormap.pcx lower part lookup table.
-	R_DrawAlphaSurfaces(&r_worldentity);
+	R_DrawAlphaSurfaces(&ent);
 
 	// Save off light value for server to look at (BIG HACK!)
-	R_SetLightLevel (&r_worldentity);
+	R_SetLightLevel (&ent);
 
 	if (r_dowarp)
 		D_WarpScreen ();
@@ -1431,7 +1443,7 @@ R_InitGraphics( int width, int height )
 
 	R_InitCaches();
 
-	R_GammaCorrectAndSetPalette((const unsigned char *)d_8to24table);
+	R_GammaCorrectAndSetPalette(d_8to24table);
 }
 
 static rserr_t	SWimp_SetMode(int *pwidth, int *pheight, int mode, int fullscreen);
@@ -1458,7 +1470,7 @@ RE_BeginFrame( float camera_separation )
 	if ( vid_gamma->modified || sw_overbrightbits->modified )
 	{
 		Draw_BuildGammaTable();
-		R_GammaCorrectAndSetPalette((const unsigned char * )d_8to24table);
+		R_GammaCorrectAndSetPalette(d_8to24table);
 		// we need redraw everything
 		VID_WholeDamageBuffer();
 		// and backbuffer should be zeroed
@@ -1574,13 +1586,12 @@ R_GammaCorrectAndSetPalette( const unsigned char *palette )
 static void
 RE_SetPalette(const unsigned char *palette)
 {
-	byte palette32[1024];
-
 	// clear screen to black to avoid any palette flash
 	RE_CleanFrame();
 
 	if (palette)
 	{
+		byte palette32[1024];
 		int i;
 
 		for ( i = 0; i < 256; i++ )
@@ -1595,7 +1606,7 @@ RE_SetPalette(const unsigned char *palette)
 	}
 	else
 	{
-		R_GammaCorrectAndSetPalette((const unsigned char *)d_8to24table);
+		R_GammaCorrectAndSetPalette(d_8to24table);
 	}
 }
 
@@ -1720,7 +1731,7 @@ RE_SetSky (char *name, float rotate, vec3_t axis)
 	int		i;
 	char	pathname[MAX_QPATH];
 
-	strncpy (skyname, name, sizeof(skyname)-1);
+	Q_strlcpy (skyname, name, sizeof(skyname));
 	VectorCopy (axis, skyaxis);
 
 	for (i=0 ; i<6 ; i++)
@@ -1746,13 +1757,13 @@ Draw_GetPalette (void)
 	byte	*pal, *out;
 	int		i;
 
-	// get the palette and colormap
+	/* get the palette and colormap */
 	LoadPCX ("pics/colormap.pcx", &vid_colormap, &pal, NULL, NULL);
 	if (!vid_colormap)
 		ri.Sys_Error (ERR_FATAL, "Couldn't load pics/colormap.pcx");
 	vid_alphamap = vid_colormap + 64*256;
 
-	out = (byte *)d_8to24table;
+	out = d_8to24table;
 	for (i=0 ; i<256 ; i++, out+=4)
 	{
 		int r, g, b;
@@ -2286,7 +2297,7 @@ SWimp_SetMode(int *pwidth, int *pheight, int mode, int fullscreen )
 
 	if ((mode >= 0) && !ri.Vid_GetModeInfo( pwidth, pheight, mode ) )
 	{
-		R_Printf( PRINT_ALL, " invalid mode\n" );
+		R_Printf(PRINT_ALL, " invalid mode\n");
 		return rserr_invalid_mode;
 	}
 
@@ -2295,7 +2306,7 @@ SWimp_SetMode(int *pwidth, int *pheight, int mode, int fullscreen )
 	{
 		if(!ri.GLimp_GetDesktopMode(pwidth, pheight))
 		{
-			R_Printf( PRINT_ALL, " can't detect mode\n" );
+			R_Printf(PRINT_ALL, " can't detect mode\n");
 			return rserr_invalid_mode;
 		}
 	}
@@ -2402,7 +2413,7 @@ SWimp_CreateRender(int width, int height)
 
 	memset(sw_state.currentpalette, 0, sizeof(sw_state.currentpalette));
 
-	R_GammaCorrectAndSetPalette( ( const unsigned char * ) d_8to24table );
+	R_GammaCorrectAndSetPalette( d_8to24table );
 }
 
 // this is only here so the functions in q_shared.c and q_shwin.c can link

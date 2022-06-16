@@ -77,6 +77,7 @@ typedef unsigned char pixel_t;
 typedef int	shift20_t;
 typedef int	zvalue_t;
 typedef unsigned int	light_t;
+typedef int	light3_t[3];
 
 // xyz-prescale to 16.16 fixed-point
 #define SHIFT16XYZ 16
@@ -92,10 +93,14 @@ typedef enum
 	rserr_unknown
 } rserr_t;
 
+/* 64 light grades available */
+#define LIGHTMASK		0xFF00
+
 extern viddef_t	vid;
 extern pixel_t	*vid_buffer;	// invisible buffer
 extern pixel_t	*vid_colormap;	// 256 * VID_GRADES size
 extern pixel_t	*vid_alphamap;	// 256 * 256 translucency map
+extern light_t	vid_lightthreshold; // full light distance maximum
 extern char	shift_size;	// shift size in fixed-point
 
 typedef struct
@@ -200,18 +205,21 @@ typedef struct
 ** if you change this structure be sure to change the #defines
 ** listed after it!
 */
-typedef struct finalvert_s {
+typedef struct compactvert_s {
 	int		u, v, s, t;
-	int		l;
+	light3_t	l;	// full color light
 	zvalue_t	zi;
-	int		flags;
-	float		xyz[3];         // eye space
-} finalvert_t;
+} compactvert_t;
 
+typedef struct finalvert_s {
+	compactvert_t cv;	// reuse compacted type
+	int		flags;
+	float		xyz[3];	// eye space
+} finalvert_t;
 
 typedef struct
 {
-	void	*pskin;
+	pixel_t	*pskin;
 	int	skinwidth;
 	int	skinheight;
 } affinetridesc_t;
@@ -227,12 +235,6 @@ typedef struct
 	int		surfwidth; // in mipmapped texels
 	int		surfheight; // in mipmapped texels
 } drawsurf_t;
-
-typedef struct {
-	int	ambientlight;
-	int	shadelight;
-	float	*plightvec;
-} alight_t;
 
 // clipped bmodel edges
 typedef struct bedge_s
@@ -411,7 +413,7 @@ extern float	xscale, yscale;
 extern float	xscaleinv, yscaleinv;
 extern float	xscaleshrink, yscaleshrink;
 
-extern void TransformVector(vec3_t in, vec3_t out);
+extern void TransformVector(const vec3_t in, vec3_t out);
 
 //===========================================================================
 
@@ -424,12 +426,15 @@ extern cvar_t	*sw_stipplealpha;
 extern cvar_t	*sw_surfcacheoverride;
 extern cvar_t	*sw_waterwarp;
 extern cvar_t	*sw_gunzposition;
-extern cvar_t	*sw_retexturing;
+extern cvar_t	*r_retexturing;
+extern cvar_t	*r_scale8bittextures;
 
 extern cvar_t	*r_fullbright;
 extern cvar_t	*r_lefthand;
 extern cvar_t	*r_gunfov;
 extern cvar_t	*r_farsee;
+extern cvar_t	*r_lightmap;
+extern cvar_t	*r_colorlight;
 extern cvar_t	*r_drawworld;
 extern cvar_t	*r_lerpmodels;
 extern cvar_t	*r_lightlevel;
@@ -443,7 +448,7 @@ extern int		*pfrustum_indexes[4];
 
 //=============================================================================
 
-void R_RenderWorld(void);
+void R_RenderWorld(entity_t *currententity);
 
 //=============================================================================
 
@@ -451,7 +456,6 @@ extern cplane_t        screenedge[4];
 
 extern vec3_t  r_origin;
 
-extern entity_t	r_worldentity;
 extern vec3_t	modelorg;
 extern vec3_t	r_entorigin;
 
@@ -477,7 +481,7 @@ void R_DrawSolidClippedSubmodelPolygons(entity_t *currententity, const model_t *
 
 void R_AliasDrawModel(entity_t *currententity, const model_t *currentmodel);
 void R_BeginEdgeFrame(void);
-void R_ScanEdges(surf_t *surface);
+void R_ScanEdges(entity_t *currententity, surf_t *surface);
 void R_PushDlights(const model_t *model);
 void R_RotateBmodel(const entity_t *currententity);
 
@@ -501,7 +505,8 @@ extern edge_t	**removeedges;
 typedef struct {
 	int		u, v, count;
 	pixel_t		*ptex;
-	int		sfrac, tfrac, light;
+	int		sfrac, tfrac;
+	light3_t	light;
 	zvalue_t	zi;
 } spanpackage_t;
 extern spanpackage_t	*triangle_spans, *triangles_max;
@@ -532,7 +537,7 @@ extern qboolean	r_outedgebasespans;
 extern mvertex_t	*r_pcurrentvertbase;
 
 void R_DrawTriangle(const entity_t *currententity, const finalvert_t *a, const finalvert_t *b, const finalvert_t *c);
-void R_AliasClipTriangle(const entity_t *currententity, const finalvert_t *index0, const finalvert_t *index1, finalvert_t *index2);
+void R_AliasClipTriangle(const entity_t *currententity, const finalvert_t *index0, const finalvert_t *index1, const finalvert_t *index2);
 
 
 extern float	r_time1;
@@ -582,15 +587,17 @@ void	RE_Draw_FadeScreen (void);
 
 void LoadPCX (char *filename, byte **pic, byte **palette, int *width, int *height);
 
+extern byte d_8to24table[256 * 4];
 void	R_InitImages(void);
 void	R_ShutdownImages(void);
 image_t	*R_FindImage(char *name, imagetype_t type);
 byte	*Get_BestImageSize(const image_t *image, int *req_width, int *req_height);
 void	R_FreeUnusedImages(void);
 qboolean R_ImageHasFreeSpace(void);
+pixel_t	R_ApplyLight(pixel_t pix, const light3_t light);
 
 void R_InitSkyBox(model_t *loadmodel);
-void R_IMFlatShadedQuad( vec3_t a, vec3_t b, vec3_t c, vec3_t d, int color, float alpha );
+void R_IMFlatShadedQuad( const vec3_t a, const vec3_t b, const vec3_t c, const vec3_t d, int color, float alpha );
 
 // VID Buffer damage
 void VID_DamageBuffer(int u, int v);

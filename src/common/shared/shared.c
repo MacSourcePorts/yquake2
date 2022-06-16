@@ -1034,7 +1034,11 @@ Com_PageInMemory(byte *buffer, int size)
 int
 Q_stricmp(const char *s1, const char *s2)
 {
+#ifdef _MSC_VER
+	return stricmp(s1, s2);
+#else
 	return strcasecmp(s1, s2);
+#endif
 }
 
 int
@@ -1394,7 +1398,7 @@ Info_SetValueForKey(char *s, char *key, char *value)
 
 	Com_sprintf(newi, sizeof(newi), "\\%s\\%s", key, value);
 
-	if (strlen(newi) + strlen(s) > maxsize)
+	if (strlen(newi) + strlen(s) >= maxsize)
 	{
 		Com_Printf("Info string length exceeded\n");
 		return;

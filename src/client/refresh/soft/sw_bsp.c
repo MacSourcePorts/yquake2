@@ -167,7 +167,7 @@ Clip a bmodel poly down the world bsp tree
 static void
 R_RecursiveClipBPoly(entity_t *currententity, bedge_t *pedges, mnode_t *pnode, msurface_t *psurf)
 {
-	bedge_t		*psideedges[2], *pnextedge, *ptedge;
+	bedge_t		*psideedges[2], *pnextedge;
 	int		i, side, lastside;
 	cplane_t	*splitplane, tplane;
 	mvertex_t	*pvert, *plastvert, *ptvert;
@@ -192,6 +192,7 @@ R_RecursiveClipBPoly(entity_t *currententity, bedge_t *pedges, mnode_t *pnode, m
 	for (; pedges; pedges = pnextedge)
 	{
 		float  dist, lastdist;
+		bedge_t *ptedge;
 
 		pnextedge = pedges->pnext;
 
@@ -280,6 +281,8 @@ R_RecursiveClipBPoly(entity_t *currententity, bedge_t *pedges, mnode_t *pnode, m
 	// plane to both sides (but in opposite directions)
 	if (makeclippededge && pfrontexit != pfrontenter)
 	{
+		bedge_t *ptedge;
+
 		ptedge = &bedges[numbedges++];
 		ptedge->pnext = psideedges[0];
 		psideedges[0] = ptedge;
@@ -358,7 +361,6 @@ R_DrawSolidClippedSubmodelPolygons(entity_t *currententity, const model_t *curre
 	{
 		cplane_t *pplane;
 		bedge_t  *pbedge;
-		medge_t  *pedge;
 		vec_t    dot;
 		int      j;
 
@@ -390,12 +392,16 @@ R_DrawSolidClippedSubmodelPolygons(entity_t *currententity, const model_t *curre
 
 			if (lindex > 0)
 			{
+				medge_t  *pedge;
+
 				pedge = &pedges[lindex];
 				pbedge[j].v[0] = &r_pcurrentvertbase[pedge->v[0]];
 				pbedge[j].v[1] = &r_pcurrentvertbase[pedge->v[1]];
 			}
 			else
 			{
+				medge_t  *pedge;
+
 				lindex = -lindex;
 				pedge = &pedges[lindex];
 				pbedge[j].v[0] = &r_pcurrentvertbase[pedge->v[1]];
@@ -410,6 +416,9 @@ R_DrawSolidClippedSubmodelPolygons(entity_t *currententity, const model_t *curre
 		if ( !( psurf->texinfo->flags & ( SURF_TRANS66 | SURF_TRANS33 ) ))
 		{
 			// FIXME: Fan broken in borehole
+			// teleport: 1231.000000 770.250000 -579.375000
+			// map: maps/mine2.bsp
+			// model texture: textures/e2u1/metal6_1.wal
 			R_RecursiveClipBPoly(currententity, pbedge, topnode, psurf);
 		}
 		else
@@ -431,7 +440,6 @@ void
 R_DrawSubmodelPolygons(entity_t *currententity, const model_t *currentmodel, int clipflags, mnode_t *topnode)
 {
 	int			i;
-	vec_t		dot;
 	msurface_t	*psurf;
 	int numsurfaces;
 
@@ -441,6 +449,8 @@ R_DrawSubmodelPolygons(entity_t *currententity, const model_t *currentmodel, int
 
 	for (i=0 ; i<numsurfaces ; i++, psurf++)
 	{
+		vec_t dot;
+
 		cplane_t *pplane;
 		// find which side of the node we are on
 		pplane = psurf->plane;
@@ -587,7 +597,7 @@ R_RecursiveWorldNode (entity_t *currententity, const model_t *currentmodel, mnod
 		{
 			msurface_t *surf;
 
-			surf = r_worldmodel->surfaces + node->firstsurface;
+			surf = currentmodel->surfaces + node->firstsurface;
 
 			if (dot < -BACKFACE_EPSILON)
 			{
@@ -631,7 +641,7 @@ R_RenderWorld
 ================
 */
 void
-R_RenderWorld (void)
+R_RenderWorld (entity_t *currententity)
 {
 	const model_t *currentmodel = r_worldmodel;
 
@@ -643,10 +653,10 @@ R_RenderWorld (void)
 	c_drawnode=0;
 
 	// auto cycle the world frame for texture animation
-	r_worldentity.frame = (int)(r_newrefdef.time*2);
+	currententity->frame = (int)(r_newrefdef.time*2);
 
 	VectorCopy (r_origin, modelorg);
 	r_pcurrentvertbase = currentmodel->vertexes;
 
-	R_RecursiveWorldNode (&r_worldentity, currentmodel, currentmodel->nodes, ALIAS_XY_CLIP_MASK, false);
+	R_RecursiveWorldNode (currententity, currentmodel, currentmodel->nodes, ALIAS_XY_CLIP_MASK, false);
 }

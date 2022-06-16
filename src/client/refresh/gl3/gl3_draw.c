@@ -249,6 +249,27 @@ GL3_Draw_TileClear(int x, int y, int w, int h, char *pic)
 	drawTexturedRectangle(x, y, w, h, x/64.0f, y/64.0f, (x+w)/64.0f, (y+h)/64.0f);
 }
 
+void
+GL3_DrawFrameBufferObject(int x, int y, int w, int h, GLuint fboTexture, const float v_blend[4])
+{
+	qboolean underwater = (gl3_newrefdef.rdflags & RDF_UNDERWATER) != 0;
+	gl3ShaderInfo_t* shader = underwater ? &gl3state.si2DpostProcessWater
+	                                     : &gl3state.si2DpostProcess;
+	GL3_UseProgram(shader->shaderProgram);
+	GL3_Bind(fboTexture);
+
+	if(underwater && shader->uniLmScalesOrTime != -1)
+	{
+		glUniform1f(shader->uniLmScalesOrTime, gl3_newrefdef.time);
+	}
+	if(shader->uniVblend != -1)
+	{
+		glUniform4fv(shader->uniVblend, 1, v_blend);
+	}
+
+	drawTexturedRectangle(x, y, w, h, 0, 1, 1, 0);
+}
+
 /*
  * Fills a box of pixels with a single color
  */
@@ -380,8 +401,9 @@ GL3_Draw_StretchRaw(int x, int y, int w, int h, int cols, int rows, byte *data)
 
 	// Note: gl_filter_min could be GL_*_MIPMAP_* so we can't use it for min filter here (=> no mipmaps)
 	//       but gl_filter_max (either GL_LINEAR or GL_NEAREST) should do the trick.
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, gl_filter_max);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, gl_filter_max);
+	GLint filter = (r_videos_unfiltered->value == 0) ? gl_filter_max : GL_NEAREST;
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, filter);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, filter);
 
 	drawTexturedRectangle(x, y, w, h, 0.0f, 0.0f, 1.0f, 1.0f);
 

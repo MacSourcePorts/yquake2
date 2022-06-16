@@ -39,9 +39,6 @@ glstate_t gl_state;
 image_t *r_notexture; /* use for bad textures */
 image_t *r_particletexture; /* little dot for particles */
 
-entity_t *currententity;
-model_t *currentmodel;
-
 cplane_t frustum[4];
 
 int r_visframecount; /* bumped when going to a new PVS */
@@ -103,9 +100,13 @@ cvar_t *r_fixsurfsky;
 cvar_t *r_customwidth;
 cvar_t *r_customheight;
 
-cvar_t *gl_retexturing;
+cvar_t *r_retexturing;
+cvar_t *r_scale8bittextures;
 
 cvar_t *gl_nolerp_list;
+cvar_t *r_lerp_list;
+cvar_t *r_2D_unfiltered;
+cvar_t *r_videos_unfiltered;
 
 cvar_t *gl1_dynamic;
 cvar_t *r_modulate;
@@ -176,7 +177,7 @@ R_RotateForEntity(entity_t *e)
 }
 
 void
-R_DrawSpriteModel(entity_t *e)
+R_DrawSpriteModel(entity_t *currententity, const model_t *currentmodel)
 {
 	float alpha = 1.0F;
 	vec3_t point[4];
@@ -188,16 +189,16 @@ R_DrawSpriteModel(entity_t *e)
 	   a single polygon without a surface cache */
 	psprite = (dsprite_t *)currentmodel->extradata;
 
-	e->frame %= psprite->numframes;
-	frame = &psprite->frames[e->frame];
+	currententity->frame %= psprite->numframes;
+	frame = &psprite->frames[currententity->frame];
 
 	/* normal sprite */
 	up = vup;
 	right = vright;
 
-	if (e->flags & RF_TRANSLUCENT)
+	if (currententity->flags & RF_TRANSLUCENT)
 	{
-		alpha = e->alpha;
+		alpha = currententity->alpha;
 	}
 
 	if (alpha != 1.0F)
@@ -207,7 +208,7 @@ R_DrawSpriteModel(entity_t *e)
 
 	glColor4f(1, 1, 1, alpha);
 
-	R_Bind(currentmodel->skins[e->frame]->texnum);
+	R_Bind(currentmodel->skins[currententity->frame]->texnum);
 
 	R_TexEnv(GL_MODULATE);
 
@@ -227,16 +228,16 @@ R_DrawSpriteModel(entity_t *e)
 		1, 1
 	};
 
-	VectorMA( e->origin, -frame->origin_y, up, point[0] );
+	VectorMA( currententity->origin, -frame->origin_y, up, point[0] );
 	VectorMA( point[0], -frame->origin_x, right, point[0] );
 
-	VectorMA( e->origin, frame->height - frame->origin_y, up, point[1] );
+	VectorMA( currententity->origin, frame->height - frame->origin_y, up, point[1] );
 	VectorMA( point[1], -frame->origin_x, right, point[1] );
 
-	VectorMA( e->origin, frame->height - frame->origin_y, up, point[2] );
+	VectorMA( currententity->origin, frame->height - frame->origin_y, up, point[2] );
 	VectorMA( point[2], frame->width - frame->origin_x, right, point[2] );
 
-	VectorMA( e->origin, -frame->origin_y, up, point[3] );
+	VectorMA( currententity->origin, -frame->origin_y, up, point[3] );
 	VectorMA( point[3], frame->width - frame->origin_x, right, point[3] );
 
 	glEnableClientState( GL_VERTEX_ARRAY );
@@ -261,7 +262,7 @@ R_DrawSpriteModel(entity_t *e)
 }
 
 void
-R_DrawNullModel(void)
+R_DrawNullModel(entity_t *currententity)
 {
 	vec3_t shadelight;
 
@@ -271,7 +272,7 @@ R_DrawNullModel(void)
 	}
 	else
 	{
-		R_LightPoint(currententity->origin, shadelight);
+		R_LightPoint(currententity, currententity->origin, shadelight);
 	}
 
 	glPushMatrix();
@@ -330,7 +331,7 @@ R_DrawEntitiesOnList(void)
 	/* draw non-transparent first */
 	for (i = 0; i < r_newrefdef.num_entities; i++)
 	{
-		currententity = &r_newrefdef.entities[i];
+		entity_t *currententity = &r_newrefdef.entities[i];
 
 		if (currententity->flags & RF_TRANSLUCENT)
 		{
@@ -343,24 +344,24 @@ R_DrawEntitiesOnList(void)
 		}
 		else
 		{
-			currentmodel = currententity->model;
+			const model_t *currentmodel = currententity->model;
 
 			if (!currentmodel)
 			{
-				R_DrawNullModel();
+				R_DrawNullModel(currententity);
 				continue;
 			}
 
 			switch (currentmodel->type)
 			{
 				case mod_alias:
-					R_DrawAliasModel(currententity);
+					R_DrawAliasModel(currententity, currentmodel);
 					break;
 				case mod_brush:
-					R_DrawBrushModel(currententity);
+					R_DrawBrushModel(currententity, currentmodel);
 					break;
 				case mod_sprite:
-					R_DrawSpriteModel(currententity);
+					R_DrawSpriteModel(currententity, currentmodel);
 					break;
 				default:
 					ri.Sys_Error(ERR_DROP, "Bad modeltype");
@@ -376,7 +377,7 @@ R_DrawEntitiesOnList(void)
 
 	for (i = 0; i < r_newrefdef.num_entities; i++)
 	{
-		currententity = &r_newrefdef.entities[i];
+		entity_t *currententity = &r_newrefdef.entities[i];
 
 		if (!(currententity->flags & RF_TRANSLUCENT))
 		{
@@ -389,24 +390,24 @@ R_DrawEntitiesOnList(void)
 		}
 		else
 		{
-			currentmodel = currententity->model;
+			const model_t *currentmodel = currententity->model;
 
 			if (!currentmodel)
 			{
-				R_DrawNullModel();
+				R_DrawNullModel(currententity);
 				continue;
 			}
 
 			switch (currentmodel->type)
 			{
 				case mod_alias:
-					R_DrawAliasModel(currententity);
+					R_DrawAliasModel(currententity, currentmodel);
 					break;
 				case mod_brush:
-					R_DrawBrushModel(currententity);
+					R_DrawBrushModel(currententity, currentmodel);
 					break;
 				case mod_sprite:
-					R_DrawSpriteModel(currententity);
+					R_DrawSpriteModel(currententity, currentmodel);
 					break;
 				default:
 					ri.Sys_Error(ERR_DROP, "Bad modeltype");
@@ -428,9 +429,10 @@ R_DrawParticles2(int num_particles, const particle_t particles[],
 	float scale;
 	YQ2_ALIGNAS_TYPE(unsigned) byte color[4];
 
-	GLfloat vtx[3*num_particles*3];
-	GLfloat tex[2*num_particles*3];
-	GLfloat clr[4*num_particles*3];
+	YQ2_VLA(GLfloat, vtx, 3 * num_particles * 3);
+	YQ2_VLA(GLfloat, tex, 2 * num_particles * 3);
+	YQ2_VLA(GLfloat, clr, 4 * num_particles * 3);
+
 	unsigned int index_vtx = 0;
 	unsigned int index_tex = 0;
 	unsigned int index_clr = 0;
@@ -512,6 +514,10 @@ R_DrawParticles2(int num_particles, const particle_t particles[],
 	glColor4f(1, 1, 1, 1);
 	glDepthMask(1); /* back to normal Z buffering */
 	R_TexEnv(GL_REPLACE);
+
+	YQ2_VLAFREE(vtx);
+	YQ2_VLAFREE(tex);
+	YQ2_VLAFREE(clr);
 }
 
 void
@@ -520,14 +526,20 @@ R_DrawParticles(void)
 	qboolean stereo_split_tb = ((gl_state.stereo_mode == STEREO_SPLIT_VERTICAL) && gl_state.camera_separation);
 	qboolean stereo_split_lr = ((gl_state.stereo_mode == STEREO_SPLIT_HORIZONTAL) && gl_state.camera_separation);
 
+	if (r_newrefdef.num_particles <= 0) /* avoiding VLA with no size and vertexes built on it */
+	{
+		return;
+	}
+
 	if (gl_config.pointparameters && !(stereo_split_tb || stereo_split_lr))
 	{
 		int i;
 		YQ2_ALIGNAS_TYPE(unsigned) byte color[4];
 		const particle_t *p;
+ 
+		YQ2_VLA(GLfloat, vtx, 3 * r_newrefdef.num_particles);
+		YQ2_VLA(GLfloat, clr, 4 * r_newrefdef.num_particles);
 
-		GLfloat vtx[3*r_newrefdef.num_particles];
-		GLfloat clr[4*r_newrefdef.num_particles];
 		unsigned int index_vtx = 0;
 		unsigned int index_clr = 0;
 
@@ -565,6 +577,9 @@ R_DrawParticles(void)
 		glColor4f( 1, 1, 1, 1 );
 		glDepthMask(GL_TRUE);
 		glEnable(GL_TEXTURE_2D);
+
+		YQ2_VLAFREE(vtx);
+		YQ2_VLAFREE(clr);
 	}
 	else
 	{
@@ -952,7 +967,7 @@ R_SetGL2D(void)
 /*
  * r_newrefdef must be set before the first call
  */
-void
+static void
 R_RenderView(refdef_t *fd)
 {
 	if ((gl_state.stereo_mode != STEREO_MODE_NONE) && gl_state.camera_separation) {
@@ -1073,7 +1088,7 @@ R_RenderView(refdef_t *fd)
 
 	if (!r_worldmodel && !(r_newrefdef.rdflags & RDF_NOWORLDMODEL))
 	{
-		ri.Sys_Error(ERR_DROP, "R_RenderView: NULL worldmodel");
+		ri.Sys_Error(ERR_DROP, "%s: NULL worldmodel", __func__);
 	}
 
 	if (r_speeds->value)
@@ -1150,8 +1165,8 @@ GL_GetSpecialBufferModeForStereoMode(enum stereo_modes stereo_mode) {
 	return OPENGL_SPECIAL_BUFFER_MODE_NONE;
 }
 
-void
-R_SetLightLevel(void)
+static void
+R_SetLightLevel(entity_t *currententity)
 {
 	vec3_t shadelight;
 
@@ -1161,7 +1176,7 @@ R_SetLightLevel(void)
 	}
 
 	/* save off light value for server to look at */
-	R_LightPoint(r_newrefdef.vieworg, shadelight);
+	R_LightPoint(currententity, r_newrefdef.vieworg, shadelight);
 
 	/* pick the greatest component, which should be the
 	 * same as the mono value returned by software */
@@ -1189,11 +1204,11 @@ R_SetLightLevel(void)
 	}
 }
 
-void
+static void
 RI_RenderFrame(refdef_t *fd)
 {
 	R_RenderView(fd);
-	R_SetLightLevel();
+	R_SetLightLevel (NULL);
 	R_SetGL2D();
 }
 
@@ -1224,7 +1239,7 @@ R_Register(void)
 
 	r_modulate = ri.Cvar_Get("r_modulate", "1", CVAR_ARCHIVE);
 	r_mode = ri.Cvar_Get("r_mode", "4", CVAR_ARCHIVE);
-	gl_lightmap = ri.Cvar_Get("gl_lightmap", "0", 0);
+	gl_lightmap = ri.Cvar_Get("r_lightmap", "0", 0);
 	gl_shadows = ri.Cvar_Get("r_shadows", "0", CVAR_ARCHIVE);
 	gl1_stencilshadow = ri.Cvar_Get("gl1_stencilshadow", "0", CVAR_ARCHIVE);
 	gl1_dynamic = ri.Cvar_Get("gl1_dynamic", "1", 0);
@@ -1263,10 +1278,17 @@ R_Register(void)
 	r_customheight = ri.Cvar_Get("r_customheight", "768", CVAR_ARCHIVE);
 	gl_msaa_samples = ri.Cvar_Get ( "r_msaa_samples", "0", CVAR_ARCHIVE );
 
-	gl_retexturing = ri.Cvar_Get("r_retexturing", "1", CVAR_ARCHIVE);
+	r_retexturing = ri.Cvar_Get("r_retexturing", "1", CVAR_ARCHIVE);
+	r_scale8bittextures = ri.Cvar_Get("r_scale8bittextures", "0", CVAR_ARCHIVE);
 
 	/* don't bilerp characters and crosshairs */
-	gl_nolerp_list = ri.Cvar_Get("r_nolerp_list", "pics/conchars.pcx pics/ch1.pcx pics/ch2.pcx pics/ch3.pcx", 0);
+	gl_nolerp_list = ri.Cvar_Get("r_nolerp_list", "pics/conchars.pcx pics/ch1.pcx pics/ch2.pcx pics/ch3.pcx", CVAR_ARCHIVE);
+	/* textures that should always be filtered, even if r_2D_unfiltered or an unfiltered gl mode is used */
+	r_lerp_list = ri.Cvar_Get("r_lerp_list", "", CVAR_ARCHIVE);
+	/* don't bilerp any 2D elements */
+	r_2D_unfiltered = ri.Cvar_Get("r_2D_unfiltered", "0", CVAR_ARCHIVE);
+	/* don't bilerp videos */
+	r_videos_unfiltered = ri.Cvar_Get("r_videos_unfiltered", "0", CVAR_ARCHIVE);
 
 	gl1_stereo = ri.Cvar_Get( "gl1_stereo", "0", CVAR_ARCHIVE );
 	gl1_stereo_separation = ri.Cvar_Get( "gl1_stereo_separation", "-0.4", CVAR_ARCHIVE );
@@ -1378,7 +1400,7 @@ R_SetMode(void)
 }
 
 qboolean
-RI_Init()
+RI_Init(void)
 {
 	int j;
 	extern float r_turbsin[256];
@@ -1651,21 +1673,28 @@ RI_BeginFrame(float camera_separation)
 	glEnable(GL_ALPHA_TEST);
 	glColor4f(1, 1, 1, 1);
 
-	if (gl_config.pointparameters && gl1_particle_square->modified)
+	if (gl1_particle_square->modified)
 	{
-		R_InitParticleTexture();
-
-		/* GL_POINT_SMOOTH is not implemented by some OpenGL
-		   drivers, especially the crappy Mesa3D backends like
-		   i915.so. That the points are squares and not circles
-		   is not a problem by Quake II! */
-		if (gl1_particle_square->value)
+		if (gl_config.pointparameters)
 		{
-			glDisable(GL_POINT_SMOOTH);
+			/* GL_POINT_SMOOTH is not implemented by some OpenGL
+			   drivers, especially the crappy Mesa3D backends like
+			   i915.so. That the points are squares and not circles
+			   is not a problem by Quake II! */
+			if (gl1_particle_square->value)
+			{
+				glDisable(GL_POINT_SMOOTH);
+			}
+			else
+			{
+				glEnable(GL_POINT_SMOOTH);
+			}
 		}
 		else
 		{
-			glEnable(GL_POINT_SMOOTH);
+			// particles aren't drawn as GL_POINTS, but as textured triangles
+			// => update particle texture to look square - or circle-ish
+			R_InitParticleTexture();
 		}
 
 		gl1_particle_square->modified = false;
@@ -1690,11 +1719,17 @@ RI_BeginFrame(float camera_separation)
 	}
 
 	/* texturemode stuff */
-	if (gl_texturemode->modified || (gl_config.anisotropic && gl_anisotropic->modified))
+	if (gl_texturemode->modified || (gl_config.anisotropic && gl_anisotropic->modified)
+	    || gl_nolerp_list->modified || r_lerp_list->modified
+		|| r_2D_unfiltered->modified || r_videos_unfiltered->modified)
 	{
 		R_TextureMode(gl_texturemode->string);
 		gl_texturemode->modified = false;
 		gl_anisotropic->modified = false;
+		gl_nolerp_list->modified = false;
+		r_lerp_list->modified = false;
+		r_2D_unfiltered->modified = false;
+		r_videos_unfiltered->modified = false;
 	}
 
 	if (gl1_texturealphamode->modified)

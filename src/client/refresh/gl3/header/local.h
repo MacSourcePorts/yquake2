@@ -34,11 +34,24 @@
   // using system headers for their parsers/indexers but glad for real build
   // (in glad glFoo is just a #define to glad_glFoo or sth, which screws up autocompletion)
   // (you may have to configure your IDE to #define IN_IDE_PARSER, but not for building!)
+#ifdef YQ2_GL3_GLES3
+  #include <GLES3/gl32.h>
+#else // desktop GL3
   #define GL_GLEXT_PROTOTYPES 1
   #include <GL/gl.h>
   #include <GL/glext.h>
+#endif
+
 #else
+
+#ifdef YQ2_GL3_GLES3
+  #include "../glad-gles3/include/glad/glad.h"
+  // yes, this is a bit hacky, but it works :-P
+  #define glDepthRange glDepthRangef
+#else // desktop GL3
   #include "../glad/include/glad/glad.h"
+#endif
+
 #endif
 
 #include "../../ref_shared.h"
@@ -81,10 +94,11 @@ enum {
 	GL3_ATTRIB_LIGHTFLAGS = 5  // uint, each set bit means "dyn light i affects this surface"
 };
 
-// TODO: do we need the following configurable?
-static const int gl3_solid_format = GL_RGB;
+// always using RGBA now, GLES3 on RPi4 doesn't work otherwise
+// and I think all modern GPUs prefer 4byte pixels over 3bytes
+static const int gl3_solid_format = GL_RGBA;
 static const int gl3_alpha_format = GL_RGBA;
-static const int gl3_tex_solid_format = GL_RGB;
+static const int gl3_tex_solid_format = GL_RGBA;
 static const int gl3_tex_alpha_format = GL_RGBA;
 
 extern unsigned gl3_rawpalette[256];
@@ -116,7 +130,8 @@ typedef struct
 typedef struct
 {
 	GLuint shaderProgram;
-	GLint uniLmScales;
+	GLint uniVblend;
+	GLint uniLmScalesOrTime; // for 3D it's lmScales, for 2D underwater PP it's time
 	hmm_vec4 lmScales[4];
 } gl3ShaderInfo_t;
 
@@ -140,8 +155,7 @@ typedef struct
 
 typedef struct
 {
-	hmm_mat4 transProjMat4;
-	hmm_mat4 transViewMat4;
+	hmm_mat4 transProjViewMat4; // gl3state.projMat3D * gl3state.viewMat3D - so we don't have to do this in the shader
 	hmm_mat4 transModelMat4;
 
 	GLfloat scroll; // for SURF_FLOWING
@@ -196,6 +210,13 @@ typedef struct
 	int currentlightmap; // lightmap_textureIDs[currentlightmap] bound to GL_TEXTURE1
 	GLuint currenttmu; // GL_TEXTURE0 or GL_TEXTURE1
 
+	// FBO for postprocess effects (like under-water-warping)
+	GLuint ppFBO;
+	GLuint ppFBtex; // ppFBO's texture for color buffer
+	int ppFBtexWidth, ppFBtexHeight;
+	GLuint ppFBrbo; // ppFBO's renderbuffer object for depth and stencil buffer
+	qboolean ppFBObound; // is it currently bound (rendered to)?
+
 	//float camera_separation;
 	//enum stereo_modes stereo_mode;
 
@@ -208,6 +229,9 @@ typedef struct
 	// NOTE: make sure si2D is always the first shaderInfo (or adapt GL3_ShutdownShaders())
 	gl3ShaderInfo_t si2D;      // shader for rendering 2D with textures
 	gl3ShaderInfo_t si2Dcolor; // shader for rendering 2D with flat colors
+	gl3ShaderInfo_t si2DpostProcess; // shader to render postprocess FBO, when *not* underwater
+	gl3ShaderInfo_t si2DpostProcessWater; // shader to apply water-warp postprocess effect
+
 	gl3ShaderInfo_t si3Dlm;        // a regular opaque face (e.g. from brush) with lightmap
 	// TODO: lm-only variants for gl_lightmap 1
 	gl3ShaderInfo_t si3Dtrans;     // transparent is always w/o lightmap
@@ -244,6 +268,8 @@ typedef struct
 	GLuint uni3DUBO;
 	GLuint uniLightsUBO;
 
+	hmm_mat4 projMat3D;
+	hmm_mat4 viewMat3D;
 } gl3state_t;
 
 extern gl3config_t gl3config;
@@ -300,8 +326,6 @@ typedef struct
 } gl3lightmapstate_t;
 
 extern gl3model_t *gl3_worldmodel;
-extern gl3model_t *currentmodel;
-extern entity_t *currententity;
 
 extern float gl3depthmin, gl3depthmax;
 
@@ -381,7 +405,7 @@ extern void GL3_BeginRegistration(char *model);
 extern struct model_s * GL3_RegisterModel(char *name);
 extern void GL3_EndRegistration(void);
 extern void GL3_Mod_Modellist_f(void);
-extern byte* GL3_Mod_ClusterPVS(int cluster, gl3model_t *model);
+extern const byte* GL3_Mod_ClusterPVS(int cluster, const gl3model_t *model);
 extern mleaf_t* GL3_Mod_PointInLeaf(vec3_t p, gl3model_t *model);
 
 // gl3_draw.c
@@ -395,6 +419,7 @@ extern void GL3_Draw_PicScaled(int x, int y, char *pic, float factor);
 extern void GL3_Draw_StretchPic(int x, int y, int w, int h, char *pic);
 extern void GL3_Draw_CharScaled(int x, int y, int num, float scale);
 extern void GL3_Draw_TileClear(int x, int y, int w, int h, char *pic);
+extern void GL3_DrawFrameBufferObject(int x, int y, int w, int h, GLuint fboTexture, const float v_blend[4]);
 extern void GL3_Draw_Fill(int x, int y, int w, int h, int c);
 extern void GL3_Draw_FadeScreen(void);
 extern void GL3_Draw_Flash(const float color[4], float x, float y, float w, float h);
@@ -421,12 +446,13 @@ extern gl3image_t *GL3_FindImage(char *name, imagetype_t type);
 extern gl3image_t *GL3_RegisterSkin(char *name);
 extern void GL3_ShutdownImages(void);
 extern void GL3_FreeUnusedImages(void);
+extern qboolean GL3_ImageHasFreeSpace(void);
 extern void GL3_ImageList_f(void);
 
 // gl3_light.c
 extern void GL3_MarkLights(dlight_t *light, int bit, mnode_t *node);
 extern void GL3_PushDlights(void);
-extern void GL3_LightPoint(vec3_t p, vec3_t color);
+extern void GL3_LightPoint(entity_t *currententity, vec3_t p, vec3_t color);
 extern void GL3_BuildLightMap(msurface_t *surf, int offsetInLMbuf, int stride);
 
 // gl3_lightmap.c
@@ -435,7 +461,7 @@ extern void GL3_BuildLightMap(msurface_t *surf, int offsetInLMbuf, int stride);
 extern void GL3_LM_InitBlock(void);
 extern void GL3_LM_UploadBlock(void);
 extern qboolean GL3_LM_AllocBlock(int w, int h, int *x, int *y);
-extern void GL3_LM_BuildPolygonFromSurface(msurface_t *fa);
+extern void GL3_LM_BuildPolygonFromSurface(gl3model_t *currentmodel, msurface_t *fa);
 extern void GL3_LM_CreateSurfaceLightmap(msurface_t *surf);
 extern void GL3_LM_BeginBuildingLightmaps(gl3model_t *m);
 extern void GL3_LM_EndBuildingLightmaps(void);
@@ -457,7 +483,7 @@ extern void GL3_DrawGLPoly(msurface_t *fa);
 extern void GL3_DrawGLFlowingPoly(msurface_t *fa);
 extern void GL3_DrawTriangleOutlines(void);
 extern void GL3_DrawAlphaSurfaces(void);
-extern void GL3_DrawBrushModel(entity_t *e);
+extern void GL3_DrawBrushModel(entity_t *e, gl3model_t *currentmodel);
 extern void GL3_DrawWorld(void);
 extern void GL3_MarkLeaves(void);
 
@@ -481,13 +507,17 @@ extern void GL3_UpdateUBOLights(void);
 
 extern cvar_t *gl_msaa_samples;
 extern cvar_t *r_vsync;
-extern cvar_t *gl_retexturing;
+extern cvar_t *r_retexturing;
+extern cvar_t *r_scale8bittextures;
 extern cvar_t *vid_fullscreen;
 extern cvar_t *r_mode;
 extern cvar_t *r_customwidth;
 extern cvar_t *r_customheight;
 
+extern cvar_t *r_2D_unfiltered;
+extern cvar_t *r_videos_unfiltered;
 extern cvar_t *gl_nolerp_list;
+extern cvar_t *r_lerp_list;
 extern cvar_t *gl_nobind;
 extern cvar_t *r_lockpvs;
 extern cvar_t *r_novis;
@@ -512,6 +542,7 @@ extern cvar_t *r_lightlevel;
 extern cvar_t *gl3_overbrightbits;
 extern cvar_t *gl3_particle_fade_factor;
 extern cvar_t *gl3_particle_square;
+extern cvar_t *gl3_colorlight;
 
 extern cvar_t *r_modulate;
 extern cvar_t *gl_lightmap;

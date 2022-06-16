@@ -1172,8 +1172,8 @@ R_DrawPoly(int iswater, espan_t *spans)
 
 	// find the top and bottom vertices, and make sure there's at least one scan to
 	// draw
-	ymin = INT_MAX; // Set maximum values for world range
-	ymax = INT_MIN; // Set minimal values for world range
+	ymin = (float)INT_MAX; // Set maximum values for world range
+	ymax = (float)INT_MIN; // Set minimal values for world range
 	pverts = r_polydesc.pverts;
 
 	for (i=0 ; i<r_polydesc.nump ; i++)
@@ -1248,7 +1248,7 @@ R_DrawAlphaSurfaces(const entity_t *currententity)
 ** R_IMFlatShadedQuad
 */
 void
-R_IMFlatShadedQuad( vec3_t a, vec3_t b, vec3_t c, vec3_t d, int color, float alpha )
+R_IMFlatShadedQuad( const vec3_t a, const vec3_t b, const vec3_t c, const vec3_t d, int color, float alpha )
 {
 	vec3_t s0, s1;
 

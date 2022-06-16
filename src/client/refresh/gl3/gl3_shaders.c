@@ -36,8 +36,13 @@ CompileShader(GLenum shaderType, const char* shaderSrc, const char* shaderSrc2)
 {
 	GLuint shader = glCreateShader(shaderType);
 
-	const char* sources[2] = { shaderSrc, shaderSrc2 };
-	int numSources = shaderSrc2 != NULL ? 2 : 1;
+#ifdef YQ2_GL3_GLES3
+	const char* version = "#version 300 es\nprecision mediump float;\n";
+#else // Desktop GL
+	const char* version = "#version 150\n";
+#endif
+	const char* sources[3] = { version, shaderSrc, shaderSrc2 };
+	int numSources = shaderSrc2 != NULL ? 3 : 2;
 
 	glShaderSource(shader, numSources, sources, NULL);
 	glCompileShader(shader);
@@ -69,7 +74,8 @@ CompileShader(GLenum shaderType, const char* shaderSrc, const char* shaderSrc2)
 		{
 			case GL_VERTEX_SHADER:   shaderTypeStr = "Vertex"; break;
 			case GL_FRAGMENT_SHADER: shaderTypeStr = "Fragment"; break;
-			case GL_GEOMETRY_SHADER: shaderTypeStr = "Geometry"; break;
+			// we don't use geometry shaders and GLES3.0 doesn't support them
+			// case GL_GEOMETRY_SHADER: shaderTypeStr = "Geometry"; break;
 			/* not supported in OpenGL3.2 and we're unlikely to need/use them anyway
 			case GL_COMPUTE_SHADER:  shaderTypeStr = "Compute"; break;
 			case GL_TESS_CONTROL_SHADER:    shaderTypeStr = "TessControl"; break;
@@ -163,7 +169,7 @@ CreateShaderProgram(int numShaders, const GLuint* shaders)
 
 // ############## shaders for 2D rendering (HUD, menus, console, videos, ..) #####################
 
-static const char* vertexSrc2D = MULTILINE_STRING(#version 150\n
+static const char* vertexSrc2D = MULTILINE_STRING(
 
 		in vec2 position; // GL3_ATTRIB_POSITION
 		in vec2 texCoord; // GL3_ATTRIB_TEXCOORD
@@ -183,7 +189,7 @@ static const char* vertexSrc2D = MULTILINE_STRING(#version 150\n
 		}
 );
 
-static const char* fragmentSrc2D = MULTILINE_STRING(#version 150\n
+static const char* fragmentSrc2D = MULTILINE_STRING(
 
 		in vec2 passTexCoord;
 
@@ -217,8 +223,89 @@ static const char* fragmentSrc2D = MULTILINE_STRING(#version 150\n
 		}
 );
 
+static const char* fragmentSrc2Dpostprocess = MULTILINE_STRING(
+		in vec2 passTexCoord;
+
+		// for UBO shared between all shaders (incl. 2D)
+		// TODO: not needed here, remove?
+		layout (std140) uniform uniCommon
+		{
+			float gamma;
+			float intensity;
+			float intensity2D; // for HUD, menu etc
+
+			vec4 color;
+		};
+
+		uniform sampler2D tex;
+		uniform vec4 v_blend;
+
+		out vec4 outColor;
+
+		void main()
+		{
+			// no gamma or intensity here, it has been applied before
+			// (this is just for postprocessing)
+			vec4 res = texture(tex, passTexCoord);
+			// apply the v_blend, usually blended as a colored quad with:
+			// glBlendEquation(GL_FUNC_ADD); glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+			res.rgb = v_blend.a * v_blend.rgb + (1.0 - v_blend.a)*res.rgb;
+			outColor =  res;
+		}
+);
+
+static const char* fragmentSrc2DpostprocessWater = MULTILINE_STRING(
+		in vec2 passTexCoord;
+
+		// for UBO shared between all shaders (incl. 2D)
+		// TODO: not needed here, remove?
+		layout (std140) uniform uniCommon
+		{
+			float gamma;
+			float intensity;
+			float intensity2D; // for HUD, menu etc
+
+			vec4 color;
+		};
+
+		const float PI = 3.14159265358979323846;
+
+		uniform sampler2D tex;
+
+		uniform float time;
+		uniform vec4 v_blend;
+
+		out vec4 outColor;
+
+		void main()
+		{
+			vec2 uv = passTexCoord;
+
+			// warping based on vkquake2
+			// here uv is always between 0 and 1 so ignore all that scrWidth and gl_FragCoord stuff
+			//float sx = pc.scale - abs(pc.scrWidth  / 2.0 - gl_FragCoord.x) * 2.0 / pc.scrWidth;
+			//float sy = pc.scale - abs(pc.scrHeight / 2.0 - gl_FragCoord.y) * 2.0 / pc.scrHeight;
+			float sx = 1.0 - abs(0.5-uv.x)*2.0;
+			float sy = 1.0 - abs(0.5-uv.y)*2.0;
+			float xShift = 2.0 * time + uv.y * PI * 10.0;
+			float yShift = 2.0 * time + uv.x * PI * 10.0;
+			vec2 distortion = vec2(sin(xShift) * sx, sin(yShift) * sy) * 0.00666;
+
+			uv += distortion;
+			uv = clamp(uv, vec2(0.0, 0.0), vec2(1.0, 1.0));
+
+			// no gamma or intensity here, it has been applied before
+			// (this is just for postprocessing)
+			vec4 res = texture(tex, uv);
+			// apply the v_blend, usually blended as a colored quad with:
+			// glBlendEquation(GL_FUNC_ADD); glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+			res.rgb = v_blend.a * v_blend.rgb + (1.0 - v_blend.a)*res.rgb;
+			outColor =  res;
+		}
+);
+
 // 2D color only rendering, GL3_Draw_Fill(), GL3_Draw_FadeScreen()
-static const char* vertexSrc2Dcolor = MULTILINE_STRING(#version 150\n
+static const char* vertexSrc2Dcolor = MULTILINE_STRING(
 
 		in vec2 position; // GL3_ATTRIB_POSITION
 
@@ -234,7 +321,7 @@ static const char* vertexSrc2Dcolor = MULTILINE_STRING(#version 150\n
 		}
 );
 
-static const char* fragmentSrc2Dcolor = MULTILINE_STRING(#version 150\n
+static const char* fragmentSrc2Dcolor = MULTILINE_STRING(
 
 		// for UBO shared between all shaders (incl. 2D)
 		layout (std140) uniform uniCommon
@@ -258,7 +345,7 @@ static const char* fragmentSrc2Dcolor = MULTILINE_STRING(#version 150\n
 
 // ############## shaders for 3D rendering #####################
 
-static const char* vertexCommon3D = MULTILINE_STRING(#version 150\n
+static const char* vertexCommon3D = MULTILINE_STRING(
 
 		in vec3 position;   // GL3_ATTRIB_POSITION
 		in vec2 texCoord;   // GL3_ATTRIB_TEXCOORD
@@ -272,8 +359,7 @@ static const char* vertexCommon3D = MULTILINE_STRING(#version 150\n
 		// for UBO shared between all 3D shaders
 		layout (std140) uniform uni3D
 		{
-			mat4 transProj;
-			mat4 transView;
+			mat4 transProjView;
 			mat4 transModel;
 
 			float scroll; // for SURF_FLOWING
@@ -287,7 +373,7 @@ static const char* vertexCommon3D = MULTILINE_STRING(#version 150\n
 		};
 );
 
-static const char* fragmentCommon3D = MULTILINE_STRING(#version 150\n
+static const char* fragmentCommon3D = MULTILINE_STRING(
 
 		in vec2 passTexCoord;
 
@@ -301,13 +387,11 @@ static const char* fragmentCommon3D = MULTILINE_STRING(#version 150\n
 			float intensity2D; // for HUD, menus etc
 
 			vec4 color; // really?
-
 		};
 		// for UBO shared between all 3D shaders
 		layout (std140) uniform uni3D
 		{
-			mat4 transProj;
-			mat4 transView;
+			mat4 transProjView;
 			mat4 transModel;
 
 			float scroll; // for SURF_FLOWING
@@ -328,7 +412,7 @@ static const char* vertexSrc3D = MULTILINE_STRING(
 		void main()
 		{
 			passTexCoord = texCoord;
-			gl_Position = transProj * transView * transModel * vec4(position, 1.0);
+			gl_Position = transProjView * transModel * vec4(position, 1.0);
 		}
 );
 
@@ -338,8 +422,8 @@ static const char* vertexSrc3Dflow = MULTILINE_STRING(
 
 		void main()
 		{
-			passTexCoord = texCoord + vec2(scroll, 0);
-			gl_Position = transProj * transView * transModel * vec4(position, 1.0);
+			passTexCoord = texCoord + vec2(scroll, 0.0);
+			gl_Position = transProjView * transModel * vec4(position, 1.0);
 		}
 );
 
@@ -362,7 +446,7 @@ static const char* vertexSrc3Dlm = MULTILINE_STRING(
 			passNormal = normalize(worldNormal.xyz);
 			passLightFlags = lightFlags;
 
-			gl_Position = transProj * transView * worldCoord;
+			gl_Position = transProjView * worldCoord;
 		}
 );
 
@@ -377,7 +461,7 @@ static const char* vertexSrc3DlmFlow = MULTILINE_STRING(
 
 		void main()
 		{
-			passTexCoord = texCoord + vec2(scroll, 0);
+			passTexCoord = texCoord + vec2(scroll, 0.0);
 			passLMcoord = lmTexCoord;
 			vec4 worldCoord = transModel * vec4(position, 1.0);
 			passWorldCoord = worldCoord.xyz;
@@ -385,7 +469,7 @@ static const char* vertexSrc3DlmFlow = MULTILINE_STRING(
 			passNormal = normalize(worldNormal.xyz);
 			passLightFlags = lightFlags;
 
-			gl_Position = transProj * transView * worldCoord;
+			gl_Position = transProjView * worldCoord;
 		}
 );
 
@@ -415,9 +499,9 @@ static const char* fragmentSrc3Dwater = MULTILINE_STRING(
 		void main()
 		{
 			vec2 tc = passTexCoord;
-			tc.s += sin( passTexCoord.t*0.125 + time ) * 4;
+			tc.s += sin( passTexCoord.t*0.125 + time ) * 4.0;
 			tc.s += scroll;
-			tc.t += sin( passTexCoord.s*0.125 + time ) * 4;
+			tc.t += sin( passTexCoord.s*0.125 + time ) * 4.0;
 			tc *= 1.0/64.0; // do this last
 
 			vec4 texel = texture(tex, tc);
@@ -492,7 +576,7 @@ static const char* fragmentSrc3Dlm = MULTILINE_STRING(
 
 					vec3 lightToPos = dynLights[i].lightOrigin - passWorldCoord;
 					float distLightToPos = length(lightToPos);
-					float fact = max(0, intens - distLightToPos - 52);
+					float fact = max(0.0, intens - distLightToPos - 52.0);
 
 					// move the light source a bit further above the surface
 					// => helps if the lightsource is so close to the surface (e.g. grenades, rockets)
@@ -501,12 +585,102 @@ static const char* fragmentSrc3Dlm = MULTILINE_STRING(
 					lightToPos += passNormal*32.0;
 
 					// also factor in angle between light and point on surface
-					fact *= max(0, dot(passNormal, normalize(lightToPos)));
+					fact *= max(0.0, dot(passNormal, normalize(lightToPos)));
 
 
 					lmTex.rgb += dynLights[i].lightColor.rgb * fact * (1.0/256.0);
 				}
 			}
+
+			lmTex.rgb *= overbrightbits;
+			outColor = lmTex*texel;
+			outColor.rgb = pow(outColor.rgb, vec3(gamma)); // apply gamma correction to result
+
+			outColor.a = 1.0; // lightmaps aren't used with translucent surfaces
+		}
+);
+
+static const char* fragmentSrc3DlmNoColor = MULTILINE_STRING(
+
+		// it gets attributes and uniforms from fragmentCommon3D
+
+		struct DynLight { // gl3UniDynLight in C
+			vec3 lightOrigin;
+			float _pad;
+			//vec3 lightColor;
+			//float lightIntensity;
+			vec4 lightColor; // .a is intensity; this way it also works on OSX...
+			// (otherwise lightIntensity always contained 1 there)
+		};
+
+		layout (std140) uniform uniLights
+		{
+			DynLight dynLights[32];
+			uint numDynLights;
+			uint _pad1; uint _pad2; uint _pad3; // FFS, AMD!
+		};
+
+		uniform sampler2D tex;
+
+		uniform sampler2D lightmap0;
+		uniform sampler2D lightmap1;
+		uniform sampler2D lightmap2;
+		uniform sampler2D lightmap3;
+
+		uniform vec4 lmScales[4];
+
+		in vec2 passLMcoord;
+		in vec3 passWorldCoord;
+		in vec3 passNormal;
+		flat in uint passLightFlags;
+
+		void main()
+		{
+			vec4 texel = texture(tex, passTexCoord);
+
+			// apply intensity
+			texel.rgb *= intensity;
+
+			// apply lightmap
+			vec4 lmTex = texture(lightmap0, passLMcoord) * lmScales[0];
+			lmTex     += texture(lightmap1, passLMcoord) * lmScales[1];
+			lmTex     += texture(lightmap2, passLMcoord) * lmScales[2];
+			lmTex     += texture(lightmap3, passLMcoord) * lmScales[3];
+
+			if(passLightFlags != 0u)
+			{
+				// TODO: or is hardcoding 32 better?
+				for(uint i=0u; i<numDynLights; ++i)
+				{
+					// I made the following up, it's probably not too cool..
+					// it basically checks if the light is on the right side of the surface
+					// and, if it is, sets intensity according to distance between light and pixel on surface
+
+					// dyn light number i does not affect this plane, just skip it
+					if((passLightFlags & (1u << i)) == 0u)  continue;
+
+					float intens = dynLights[i].lightColor.a;
+
+					vec3 lightToPos = dynLights[i].lightOrigin - passWorldCoord;
+					float distLightToPos = length(lightToPos);
+					float fact = max(0.0, intens - distLightToPos - 52.0);
+
+					// move the light source a bit further above the surface
+					// => helps if the lightsource is so close to the surface (e.g. grenades, rockets)
+					//    that the dot product below would return 0
+					// (light sources that are below the surface are filtered out by lightFlags)
+					lightToPos += passNormal*32.0;
+
+					// also factor in angle between light and point on surface
+					fact *= max(0.0, dot(passNormal, normalize(lightToPos)));
+
+
+					lmTex.rgb += dynLights[i].lightColor.rgb * fact * (1.0/256.0);
+				}
+			}
+
+			// turn lightcolor into grey for gl3_colorlight 0
+			lmTex.rgb = vec3(0.333 * (lmTex.r+lmTex.g+lmTex.b));
 
 			lmTex.rgb *= overbrightbits;
 			outColor = lmTex*texel;
@@ -594,7 +768,7 @@ static const char* vertexSrc3Dwater = MULTILINE_STRING(
 		{
 			passTexCoord = texCoord;
 
-			gl_Position = transProj * transView * transModel * vec4(position, 1.0);
+			gl_Position = transProjView * transModel * vec4(position, 1.0);
 		}
 );
 
@@ -608,7 +782,7 @@ static const char* vertexSrcAlias = MULTILINE_STRING(
 		{
 			passColor = vertColor*overbrightbits;
 			passTexCoord = texCoord;
-			gl_Position = transProj * transView * transModel * vec4(position, 1.0);
+			gl_Position = transProjView* transModel * vec4(position, 1.0);
 		}
 );
 
@@ -661,7 +835,7 @@ static const char* vertexSrcParticles = MULTILINE_STRING(
 		void main()
 		{
 			passColor = vertColor;
-			gl_Position = transProj * transView * transModel * vec4(position, 1.0);
+			gl_Position = transProjView * transModel * vec4(position, 1.0);
 
 			// abusing texCoord for pointSize, pointDist for particles
 			float pointDist = texCoord.y*0.1; // with factor 0.1 it looks good.
@@ -737,7 +911,8 @@ initShader2D(gl3ShaderInfo_t* shaderInfo, const char* vertSrc, const char* fragS
 
 	//shaderInfo->uniColor = shaderInfo->uniProjMatrix = shaderInfo->uniModelViewMatrix = -1;
 	shaderInfo->shaderProgram = 0;
-	shaderInfo->uniLmScales = -1;
+	shaderInfo->uniLmScalesOrTime = -1;
+	shaderInfo->uniVblend = -1;
 
 	shaders2D[0] = CompileShader(GL_VERTEX_SHADER, vertSrc, NULL);
 	if(shaders2D[0] == 0)  return false;
@@ -804,6 +979,18 @@ initShader2D(gl3ShaderInfo_t* shaderInfo, const char* vertSrc, const char* fragS
 		goto err_cleanup;
 	}
 
+	shaderInfo->uniLmScalesOrTime = glGetUniformLocation(prog, "time");
+	if(shaderInfo->uniLmScalesOrTime != -1)
+	{
+		glUniform1f(shaderInfo->uniLmScalesOrTime, 0.0f);
+	}
+
+	shaderInfo->uniVblend = glGetUniformLocation(prog, "v_blend");
+	if(shaderInfo->uniVblend != -1)
+	{
+		glUniform4f(shaderInfo->uniVblend, 0, 0, 0, 0);
+	}
+
 	return true;
 
 err_cleanup:
@@ -827,7 +1014,8 @@ initShader3D(gl3ShaderInfo_t* shaderInfo, const char* vertSrc, const char* fragS
 	}
 
 	shaderInfo->shaderProgram = 0;
-	shaderInfo->uniLmScales = -1;
+	shaderInfo->uniLmScalesOrTime = -1;
+	shaderInfo->uniVblend = -1;
 
 	shaders3D[0] = CompileShader(GL_VERTEX_SHADER, vertexCommon3D, vertSrc);
 	if(shaders3D[0] == 0)  return false;
@@ -927,7 +1115,7 @@ initShader3D(gl3ShaderInfo_t* shaderInfo, const char* vertSrc, const char* fragS
 	}
 
 	GLint lmScalesLoc = glGetUniformLocation(prog, "lmScales");
-	shaderInfo->uniLmScales = lmScalesLoc;
+	shaderInfo->uniLmScalesOrTime = lmScalesLoc;
 	if(lmScalesLoc != -1)
 	{
 		shaderInfo->lmScales[0] = HMM_Vec4(1.0f, 1.0f, 1.0f, 1.0f);
@@ -976,8 +1164,7 @@ static void initUBOs(void)
 	glBufferData(GL_UNIFORM_BUFFER, sizeof(gl3state.uni2DData), &gl3state.uni2DData, GL_DYNAMIC_DRAW);
 
 	// the matrices will be set to something more useful later, before being used
-	gl3state.uni3DData.transProjMat4 = HMM_Mat4();
-	gl3state.uni3DData.transViewMat4 = HMM_Mat4();
+	gl3state.uni3DData.transProjViewMat4 = HMM_Mat4();
 	gl3state.uni3DData.transModelMat4 = gl3_identityMat4;
 	gl3state.uni3DData.scroll = 0.0f;
 	gl3state.uni3DData.time = 0.0f;
@@ -1011,7 +1198,22 @@ static qboolean createShaders(void)
 		R_Printf(PRINT_ALL, "WARNING: Failed to create shader program for color-only 2D rendering!\n");
 		return false;
 	}
-	if(!initShader3D(&gl3state.si3Dlm, vertexSrc3Dlm, fragmentSrc3Dlm))
+
+	if(!initShader2D(&gl3state.si2DpostProcess, vertexSrc2D, fragmentSrc2Dpostprocess))
+	{
+		R_Printf(PRINT_ALL, "WARNING: Failed to create shader program to render framebuffer object!\n");
+		return false;
+	}
+	if(!initShader2D(&gl3state.si2DpostProcessWater, vertexSrc2D, fragmentSrc2DpostprocessWater))
+	{
+		R_Printf(PRINT_ALL, "WARNING: Failed to create shader program to render framebuffer object under water!\n");
+		return false;
+	}
+
+	const char* lightmappedFrag = (gl3_colorlight->value == 0.0f)
+	                               ? fragmentSrc3DlmNoColor : fragmentSrc3Dlm;
+
+	if(!initShader3D(&gl3state.si3Dlm, vertexSrc3Dlm, lightmappedFrag))
 	{
 		R_Printf(PRINT_ALL, "WARNING: Failed to create shader program for textured 3D rendering with lightmap!\n");
 		return false;
@@ -1038,7 +1240,7 @@ static qboolean createShaders(void)
 		R_Printf(PRINT_ALL, "WARNING: Failed to create shader program for water rendering!\n");
 		return false;
 	}
-	if(!initShader3D(&gl3state.si3DlmFlow, vertexSrc3DlmFlow, fragmentSrc3Dlm))
+	if(!initShader3D(&gl3state.si3DlmFlow, vertexSrc3DlmFlow, lightmappedFrag))
 	{
 		R_Printf(PRINT_ALL, "WARNING: Failed to create shader program for scrolling textured 3D rendering with lightmap!\n");
 		return false;
